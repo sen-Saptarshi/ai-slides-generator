@@ -57,7 +57,7 @@ export function ColorPicker({ value, onChange }: ColorPickerProps) {
                     "h-8 w-8 rounded-full border border-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all",
                     value === color
                       ? "ring-2 ring-offset-1 ring-black scale-110"
-                      : "hover:scale-105"
+                      : "hover:scale-105",
                   )}
                   style={{ backgroundColor: color }}
                   onClick={() => onChange(color)}
