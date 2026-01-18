@@ -16,6 +16,7 @@ interface SlidePreviewProps {
   color: string;
   onUpdate?: (newData: Presentation) => void;
   font?: string;
+  isDarkMode?: boolean;
 }
 
 export function SlidePreview({
@@ -24,6 +25,7 @@ export function SlidePreview({
   color,
   onUpdate,
   font = "",
+  isDarkMode = false,
 }: SlidePreviewProps) {
   const handleUpdateTitle = (newTitle: string) => {
     if (data && onUpdate) {
@@ -96,7 +98,10 @@ export function SlidePreview({
         <div className="w-full flex justify-center">
           <div id="slide-title" className="w-full max-w-4xl pptx-slide-export">
             <Card
-              className="aspect-video w-full flex flex-col justify-center items-center text-center p-12 shadow-xl border-t-8"
+              className={cn(
+                "aspect-video w-full flex flex-col justify-center items-center text-center p-12 shadow-xl border-t-8",
+                isDarkMode ? "bg-black text-white" : "bg-white",
+              )}
               style={{ borderTopColor: color }}
             >
               <h1 className="text-5xl font-bold mb-6" style={{ color }}>
@@ -105,10 +110,16 @@ export function SlidePreview({
                   onSave={handleUpdateTitle}
                   style={{ color }}
                   className="inline-block min-w-50"
+                  color={color}
                 />
               </h1>
               {data.subtitle && (
-                <div className="text-2xl text-gray-500 font-light tracking-wide">
+                <div
+                  className={cn(
+                    "text-2xl font-light tracking-wide",
+                    isDarkMode ? "text-gray-300" : "text-gray-500",
+                  )}
+                >
                   <EditableText
                     initialValue={data.subtitle}
                     onSave={handleUpdateSubtitle}
@@ -132,10 +143,18 @@ export function SlidePreview({
               className="pptx-slide-export"
             >
               <Card
-                className="aspect-video flex flex-col overflow-hidden shadow-lg hover:shadow-xl transition-shadow border-t-4"
+                className={cn(
+                  "aspect-video flex flex-col overflow-hidden shadow-lg hover:shadow-xl transition-shadow border-t-4",
+                  isDarkMode ? "bg-black text-white" : "bg-white",
+                )}
                 style={{ borderTopColor: color }}
               >
-                <CardHeader className="bg-white pb-4 pt-8 px-12">
+                <CardHeader
+                  className={cn(
+                    "pb-4 pt-8 px-12",
+                    isDarkMode ? "bg-black" : "bg-white",
+                  )}
+                >
                   <CardTitle className="text-3xl font-bold" style={{ color }}>
                     <EditableText
                       initialValue={slide.title}
@@ -152,7 +171,10 @@ export function SlidePreview({
                           .map((point: string, i: number) => (
                             <li
                               key={i}
-                              className="text-lg text-gray-700 leading-relaxed"
+                              className={cn(
+                                "text-lg leading-relaxed",
+                                isDarkMode ? "text-gray-300" : "text-gray-700",
+                              )}
                             >
                               <EditableText
                                 initialValue={point}
@@ -173,7 +195,12 @@ export function SlidePreview({
                             return (
                               <li
                                 key={trueIndex}
-                                className="text-lg text-gray-700 leading-relaxed"
+                                className={cn(
+                                  "text-lg leading-relaxed",
+                                  isDarkMode
+                                    ? "text-gray-300"
+                                    : "text-gray-700",
+                                )}
                               >
                                 <EditableText
                                   initialValue={point}
@@ -196,7 +223,10 @@ export function SlidePreview({
                       {slide.content.map((point: string, i: number) => (
                         <li
                           key={i}
-                          className="text-xl text-gray-700 leading-relaxed"
+                          className={cn(
+                            "text-xl leading-relaxed",
+                            isDarkMode ? "text-gray-300" : "text-gray-700",
+                          )}
                         >
                           <EditableText
                             initialValue={point}
@@ -210,7 +240,14 @@ export function SlidePreview({
                     </ul>
                   )}
                 </CardContent>
-                <div className="h-4 w-full bg-gray-50 flex items-center justify-between px-6 text-[10px] text-gray-300">
+                <div
+                  className={cn(
+                    "h-4 w-full flex items-center justify-between px-6 text-[10px]",
+                    isDarkMode
+                      ? "bg-gray-900/50 text-gray-500"
+                      : "bg-gray-50 text-gray-300",
+                  )}
+                >
                   <span>
                     {index + 1} / {data.slides.length}
                   </span>

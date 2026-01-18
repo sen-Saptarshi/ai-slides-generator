@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { presentationSchema } from "@/lib/schema/ppt-schema";
 import { z } from "zod";
-import { Loader2, Play } from "lucide-react";
+import { Loader2, Play, Moon, Sun, Trash2 } from "lucide-react";
 
 import { toPng } from "html-to-image";
 import pptxgen from "pptxgenjs";
@@ -25,20 +25,25 @@ interface FormData {
 export default function Home() {
   const [data, setData] = useState<PresentationData | undefined>();
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false); // Add export loading state
   const [isPresenting, setIsPresenting] = useState(false);
   const [color, setColor] = useState("#000000"); // Default color
   const [font, setFont] = useState<string>(""); // Global font state
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors },
   } = useForm<FormData>();
 
   useEffect(() => {
     const saved = localStorage.getItem("presentation-data");
     const savedFont = localStorage.getItem("presentation-font");
+    const savedTheme = localStorage.getItem("presentation-theme");
+
     if (saved) {
       try {
         setData(JSON.parse(saved));
@@ -49,7 +54,20 @@ export default function Home() {
     if (savedFont) {
       setFont(savedFont);
     }
+    if (savedTheme === "dark") {
+      setIsDarkMode(true);
+    }
   }, []);
+
+  // When in dark mode, if the accent color is black (default),
+  // we force it to white so it's visible against the black card background.
+  const effectiveColor = isDarkMode && color === "#000000" ? "#ffffff" : color;
+
+  const toggleTheme = () => {
+    const newTheme = !isDarkMode;
+    setIsDarkMode(newTheme);
+    localStorage.setItem("presentation-theme", newTheme ? "dark" : "light");
+  };
 
   const handleDataUpdate = (newData: PresentationData) => {
     setData(newData);
@@ -61,21 +79,35 @@ export default function Home() {
     localStorage.setItem("presentation-font", newFont);
   };
 
+  const handleReset = () => {
+    setData(undefined);
+    setError(null);
+    localStorage.removeItem("presentation-data");
+    reset();
+  };
+
   const onSubmit = async (formData: FormData) => {
     setIsLoading(true);
     setData(undefined);
+    setError(null);
     try {
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: formData.topic }),
       });
+
+      if (!response.ok) {
+        throw new Error("Failed to generate presentation");
+      }
+
       const result = await response.json();
       const newData = result.object || result;
       setData(newData);
       localStorage.setItem("presentation-data", JSON.stringify(newData));
     } catch (error) {
       console.error("Failed to generate slides", error);
+      setError("Failed to generate slides. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -151,7 +183,25 @@ export default function Home() {
             </div>
 
             <div className="space-y-2">
-              <Label>Presentation Font</Label>
+              <div className="flex items-center justify-between">
+                <Label>Presentation Font</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={toggleTheme}
+                  className="h-6 w-6"
+                  title={
+                    isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"
+                  }
+                >
+                  {isDarkMode ? (
+                    <Sun className="h-4 w-4" />
+                  ) : (
+                    <Moon className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
               <div className="w-full">
                 <FontPicker
                   currentFont={font}
@@ -160,21 +210,38 @@ export default function Home() {
               </div>
             </div>
 
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={isLoading}
-              style={{ backgroundColor: color }}
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Generating...
-                </>
-              ) : (
-                "Generate Presentation"
-              )}
-            </Button>
+            {error && (
+              <div className="p-3 bg-red-50 text-red-500 rounded-md text-sm border border-red-100">
+                {error}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleReset}
+                title="Clear Data"
+                className="px-3"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+              <Button
+                type="submit"
+                className="flex-1"
+                disabled={isLoading}
+                style={{ backgroundColor: color }}
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  "Generate Presentation"
+                )}
+              </Button>
+            </div>
           </form>
 
           {data && (
@@ -215,9 +282,10 @@ export default function Home() {
           <SlidePreview
             data={data}
             isLoading={isLoading}
-            color={color}
+            color={effectiveColor}
             onUpdate={handleDataUpdate}
             font={font}
+            isDarkMode={isDarkMode}
           />
         </div>
       </div>
@@ -226,8 +294,9 @@ export default function Home() {
       {isPresenting && data && (
         <PresentationMode
           data={data}
-          color={color}
+          color={effectiveColor}
           font={font}
+          isDarkMode={isDarkMode}
           onClose={() => setIsPresenting(false)}
         />
       )}

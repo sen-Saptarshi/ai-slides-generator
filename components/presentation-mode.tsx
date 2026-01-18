@@ -30,6 +30,7 @@ interface PresentationModeProps {
   color: string;
   font: string;
   onClose: () => void;
+  isDarkMode?: boolean;
 }
 
 type ViewMode = "standard" | "wide" | "full";
@@ -40,6 +41,7 @@ export function PresentationMode({
   color,
   font,
   onClose,
+  isDarkMode = false,
 }: PresentationModeProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [viewMode, setViewMode] = useState<ViewMode>("wide");
@@ -110,6 +112,7 @@ export function PresentationMode({
           className={cn(
             "aspect-video w-full flex flex-col justify-center items-center text-center p-12 shadow-2xl border-t-8 transition-all duration-300",
             widthClass,
+            isDarkMode ? "bg-black text-white" : "bg-white",
           )}
           style={{ borderTopColor: color }}
         >
@@ -117,7 +120,12 @@ export function PresentationMode({
             {data.title}
           </h1>
           {data.subtitle && (
-            <div className="text-3xl text-gray-500 font-light tracking-wide">
+            <div
+              className={cn(
+                "text-3xl font-light tracking-wide",
+                isDarkMode ? "text-gray-300" : "text-gray-500",
+              )}
+            >
               {data.subtitle}
             </div>
           )}
@@ -135,10 +143,16 @@ export function PresentationMode({
           className={cn(
             "aspect-video w-full flex flex-col overflow-hidden shadow-2xl border-t-8 transition-all duration-300",
             widthClass,
+            isDarkMode ? "bg-black text-white" : "bg-white",
           )}
           style={{ borderTopColor: color }}
         >
-          <CardHeader className="bg-white pb-6 pt-10 px-16">
+          <CardHeader
+            className={cn(
+              "pb-6 pt-10 px-16",
+              isDarkMode ? "bg-black" : "bg-white",
+            )}
+          >
             <CardTitle className="text-4xl font-bold" style={{ color }}>
               {slide.title}
             </CardTitle>
@@ -152,7 +166,10 @@ export function PresentationMode({
                     .map((point: string, i: number) => (
                       <li
                         key={i}
-                        className="text-2xl text-gray-700 leading-relaxed"
+                        className={cn(
+                          "text-2xl leading-relaxed",
+                          isDarkMode ? "text-gray-300" : "text-gray-700",
+                        )}
                       >
                         {point}
                       </li>
@@ -164,7 +181,10 @@ export function PresentationMode({
                     .map((point: string, i: number) => (
                       <li
                         key={i}
-                        className="text-2xl text-gray-700 leading-relaxed"
+                        className={cn(
+                          "text-2xl leading-relaxed",
+                          isDarkMode ? "text-gray-300" : "text-gray-700",
+                        )}
                       >
                         {point}
                       </li>
@@ -176,7 +196,10 @@ export function PresentationMode({
                 {slide.content.map((point: string, i: number) => (
                   <li
                     key={i}
-                    className="text-3xl text-gray-700 leading-relaxed"
+                    className={cn(
+                      "text-3xl leading-relaxed",
+                      isDarkMode ? "text-gray-300" : "text-gray-700",
+                    )}
                   >
                     {point}
                   </li>
@@ -184,7 +207,14 @@ export function PresentationMode({
               </ul>
             )}
           </CardContent>
-          <div className="h-6 w-full bg-gray-50 flex items-center justify-between px-8 text-sm text-gray-400">
+          <div
+            className={cn(
+              "h-6 w-full flex items-center justify-between px-8 text-sm",
+              isDarkMode
+                ? "bg-gray-900/50 text-gray-500"
+                : "bg-gray-50 text-gray-400",
+            )}
+          >
             <span>
               {currentSlide} / {data.slides.length}
             </span>
