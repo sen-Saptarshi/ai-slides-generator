@@ -8,6 +8,7 @@ import {
   Monitor,
   Minimize,
   Maximize,
+  Shuffle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,6 +21,7 @@ import {
 import { cn } from "@/lib/utils";
 import { z } from "zod";
 import { presentationSchema } from "@/lib/schema/ppt-schema";
+import { motion, AnimatePresence } from "framer-motion";
 
 type Presentation = z.infer<typeof presentationSchema>;
 
@@ -31,6 +33,7 @@ interface PresentationModeProps {
 }
 
 type ViewMode = "standard" | "wide" | "full";
+type TransitionMode = "none" | "fade" | "slide" | "scale";
 
 export function PresentationMode({
   data,
@@ -40,6 +43,7 @@ export function PresentationMode({
 }: PresentationModeProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [viewMode, setViewMode] = useState<ViewMode>("wide");
+  const [transition, setTransition] = useState<TransitionMode>("slide");
 
   // Total slides = 1 (title) + content slides
   const totalSlides = 1 + data.slides.length;
@@ -49,6 +53,29 @@ export function PresentationMode({
     wide: "max-w-7xl",
     full: "max-w-[95vw]",
   }[viewMode];
+
+  const variants = {
+    none: {
+      initial: { opacity: 1 },
+      animate: { opacity: 1 },
+      exit: { opacity: 1 },
+    },
+    fade: {
+      initial: { opacity: 0 },
+      animate: { opacity: 1 },
+      exit: { opacity: 0 },
+    },
+    slide: {
+      initial: { x: "100%", opacity: 0 },
+      animate: { x: 0, opacity: 1 },
+      exit: { x: "-100%", opacity: 0 },
+    },
+    scale: {
+      initial: { scale: 0.8, opacity: 0 },
+      animate: { scale: 1, opacity: 1 },
+      exit: { scale: 1.1, opacity: 0 },
+    },
+  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -175,7 +202,33 @@ export function PresentationMode({
         font,
       )}
     >
-      <div className="absolute top-4 right-4 flex items-center gap-2">
+      <div className="absolute top-4 right-4 flex items-center gap-2 z-50">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-white hover:bg-white/20"
+            >
+              <Shuffle className="h-6 w-6" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setTransition("none")}>
+              None
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setTransition("fade")}>
+              Fade
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setTransition("slide")}>
+              Slide
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setTransition("scale")}>
+              Scale
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -209,8 +262,20 @@ export function PresentationMode({
         </Button>
       </div>
 
-      <div className="flex-1 w-full flex items-center justify-center">
-        {slideContent()}
+      <div className="flex-1 w-full flex items-center justify-center overflow-hidden">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentSlide}
+            variants={variants[transition]}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={{ duration: 0.3 }}
+            className="w-full h-full flex items-center justify-center"
+          >
+            {slideContent()}
+          </motion.div>
+        </AnimatePresence>
       </div>
 
       <div className="absolute bottom-8 flex items-center gap-4 text-white/50">
