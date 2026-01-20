@@ -9,12 +9,19 @@ import { FontPicker } from "@/components/font-picker";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { presentationSchema } from "@/lib/schema/ppt-schema";
 import { z } from "zod";
-import { Loader2, Play, Moon, Sun, Trash2 } from "lucide-react";
+import { Loader2, Play, Moon, Sun, Trash2, ChevronDown } from "lucide-react";
 
-import { toPng } from "html-to-image";
+import { toPng, toJpeg } from "html-to-image";
 import pptxgen from "pptxgenjs";
+import jsPDF from "jspdf";
 
 type PresentationData = z.infer<typeof presentationSchema>;
 
@@ -31,6 +38,8 @@ export default function Home() {
   const [color, setColor] = useState("#000000"); // Default color
   const [font, setFont] = useState<string>(""); // Global font state
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [exportFormat, setExportFormat] = useState<"pptx" | "pdf">("pptx");
+  const [exportQuality, setExportQuality] = useState<"high" | "medium">("high");
 
   const {
     register,
@@ -118,32 +127,99 @@ export default function Home() {
     setIsExporting(true);
 
     try {
-      const pres = new pptxgen();
-      pres.layout = "LAYOUT_16x9";
+      const isHighQuality = exportQuality === "high";
+      const pixelRatio = isHighQuality ? 2 : 1;
+      const imageQuality = isHighQuality ? 1.0 : 0.8;
+
+      const titleSlideElement = document.getElementById("slide-title");
+      const slideImages: { dataUrl: string; width: number; height: number }[] =
+        [];
+
+      const captureSlide = async (element: HTMLElement) => {
+        const options = {
+          quality: imageQuality,
+          pixelRatio: pixelRatio,
+          cacheBust: true,
+          backgroundColor: isDarkMode ? "#000000" : "#ffffff",
+        };
+
+        let dataUrl;
+        // If High Quality PPT, use PNG (lossless). Otherwise use JPEG (smaller).
+        if (isHighQuality && exportFormat === "pptx") {
+          dataUrl = await toPng(element, options);
+        } else {
+          dataUrl = await toJpeg(element, options);
+        }
+
+        return {
+          dataUrl,
+          width: element.offsetWidth,
+          height: element.offsetHeight,
+        };
+      };
 
       // Capture Title Slide
-      const titleSlideElement = document.getElementById("slide-title");
       if (titleSlideElement) {
-        const dataUrl = await toPng(titleSlideElement, { quality: 0.95 });
-        const slide = pres.addSlide();
-        slide.background = { data: dataUrl }; // Set as background image
+        const result = await captureSlide(titleSlideElement);
+        slideImages.push(result);
       }
 
       // Capture Content Slides
       for (let i = 0; i < data.slides.length; i++) {
         const slideElement = document.getElementById(`slide-${i}`);
         if (slideElement) {
-          const dataUrl = await toPng(slideElement, { quality: 0.95 });
-          const slide = pres.addSlide();
-          // We add it as an image that fills the slide to avoid distortion if aspect ratio differs slightly
-          // or just background
-          slide.addImage({ data: dataUrl, x: 0, y: 0, w: "100%", h: "100%" });
+          const result = await captureSlide(slideElement);
+          slideImages.push(result);
         }
       }
 
-      await pres.writeFile({
-        fileName: `${data.title.replace(/[^a-z0-9]/gi, "_")}.pptx`,
-      });
+      const fileName = `${data.title.replace(/[^a-z0-9]/gi, "_")}`;
+
+      if (exportFormat === "pdf") {
+        if (slideImages.length === 0) return;
+
+        const firstSlide = slideImages[0];
+        const pdf = new jsPDF({
+          orientation: "landscape",
+          unit: "px",
+          format: [
+            firstSlide.width * pixelRatio,
+            firstSlide.height * pixelRatio,
+          ],
+        });
+
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = pdf.internal.pageSize.getHeight();
+
+        slideImages.forEach((slide, index) => {
+          if (index > 0) {
+            pdf.addPage([slide.width * pixelRatio, slide.height * pixelRatio]);
+          }
+          pdf.addImage(
+            slide.dataUrl,
+            slide.dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG",
+            0,
+            0,
+            pdfWidth,
+            pdfHeight,
+          );
+        });
+
+        pdf.save(`${fileName}.pdf`);
+      } else {
+        // Export to PPTX
+        const pres = new pptxgen();
+        pres.layout = "LAYOUT_16x9";
+
+        slideImages.forEach((slide) => {
+          const s = pres.addSlide();
+          s.addImage({ data: slide.dataUrl, x: 0, y: 0, w: "100%", h: "100%" });
+        });
+
+        await pres.writeFile({
+          fileName: `${fileName}.pptx`,
+        });
+      }
     } catch (e) {
       console.error("Export failed", e);
     } finally {
@@ -254,11 +330,72 @@ export default function Home() {
                 <Play className="h-4 w-4" />
                 Present
               </Button>
+              <div className="grid grid-cols-2 gap-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="text-gray-700 border-gray-300 flex items-center justify-between px-3"
+                    >
+                      <span className="text-sm truncate">
+                        {exportFormat === "pdf" ? "PDF" : "PPTX"}
+                      </span>
+                      <ChevronDown className="h-4 w-4 ml-2 opacity-50 shrink-0" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuItem
+                      onClick={() => setExportFormat("pptx")}
+                      className={exportFormat === "pptx" ? "bg-gray-100" : ""}
+                    >
+                      PowerPoint (.pptx)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setExportFormat("pdf")}
+                      className={exportFormat === "pdf" ? "bg-gray-100" : ""}
+                    >
+                      PDF (.pdf)
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="text-gray-700 border-gray-300 flex items-center justify-between px-3"
+                    >
+                      <span className="text-sm truncate">
+                        {exportQuality === "high" ? "High Q" : "Mid Q"}
+                      </span>
+                      <ChevronDown className="h-4 w-4 ml-2 opacity-50 shrink-0" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={() => setExportQuality("high")}
+                      className={exportQuality === "high" ? "bg-gray-100" : ""}
+                    >
+                      High (Larger size)
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setExportQuality("medium")}
+                      className={
+                        exportQuality === "medium" ? "bg-gray-100" : ""
+                      }
+                    >
+                      Medium (Smaller size)
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+
               <Button
                 onClick={handleExport}
                 disabled={isExporting}
-                variant="outline"
-                className="w-full text-gray-700 border-gray-300"
+                variant="default"
+                className="w-full text-white"
+                style={{ backgroundColor: color }}
               >
                 {isExporting ? (
                   <>
@@ -266,7 +403,7 @@ export default function Home() {
                     Exporting...
                   </>
                 ) : (
-                  "Export to PowerPoint"
+                  "Export Presentation"
                 )}
               </Button>
             </div>
