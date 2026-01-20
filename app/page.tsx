@@ -229,9 +229,9 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="container mx-auto py-8 grid grid-cols-1 lg:grid-cols-12 gap-8 h-screen">
+      <div className="container mx-auto p-4 lg:py-8 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 lg:h-screen lg:overflow-hidden">
         {/* Left Sidebar - Controls */}
-        <div className="lg:col-span-4 space-y-6 p-6 border-r h-full flex flex-col">
+        <div className="lg:col-span-4 space-y-6 p-4 lg:p-6 border-b lg:border-b-0 lg:border-r h-fit lg:h-full flex flex-col lg:overflow-y-auto">
           <div>
             <h1 className="text-2xl font-bold mb-2">AI Slide Gen</h1>
             <p className="text-gray-500 mb-8">
@@ -415,7 +415,7 @@ export default function Home() {
         </div>
 
         {/* Right Area - Preview */}
-        <div className="lg:col-span-8 p-6 bg-gray-50/50">
+        <div className="lg:col-span-8 p-4 lg:p-6 bg-gray-50/50 lg:h-full lg:overflow-y-auto rounded-xl">
           <SlidePreview
             data={data}
             isLoading={isLoading}

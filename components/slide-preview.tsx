@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef, useEffect, useState, ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { z } from "zod";
@@ -18,6 +19,44 @@ interface SlidePreviewProps {
   font?: string;
   isDarkMode?: boolean;
 }
+
+const ScaledSlide = ({ children }: { children: ReactNode }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const updateScale = () => {
+      if (containerRef.current) {
+        const containerWidth = containerRef.current.offsetWidth;
+        const targetScale = containerWidth / 960; // 960px is our reference fixed width
+        setScale(targetScale);
+      }
+    };
+
+    updateScale();
+    window.addEventListener("resize", updateScale);
+    return () => window.removeEventListener("resize", updateScale);
+  }, []);
+
+  return (
+    <div
+      ref={containerRef}
+      className="w-full relative"
+      style={{ height: 960 * (9 / 16) * scale }}
+    >
+      <div
+        className="absolute top-0 left-0 origin-top-left transition-transform duration-200"
+        style={{
+          transform: `scale(${scale})`,
+          width: "960px",
+          height: "540px",
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+};
 
 export function SlidePreview({
   data,
@@ -92,109 +131,87 @@ export function SlidePreview({
   }
 
   return (
-    <ScrollArea className="h-[calc(100vh-200px)]">
-      <div className={cn("space-y-8 p-4", font)}>
+    <ScrollArea className="h-full">
+      <div className={cn("space-y-8 p-4 pb-20", font)}>
         {/* Title Slide */}
         <div className="w-full flex justify-center">
-          <div id="slide-title" className="w-full max-w-4xl pptx-slide-export">
-            <Card
-              className={cn(
-                "aspect-video w-full flex flex-col justify-center items-center text-center p-12 shadow-xl border-t-8",
-                isDarkMode ? "bg-black text-white" : "bg-white",
-              )}
-              style={{ borderTopColor: color }}
-            >
-              <h1 className="text-5xl font-bold mb-6" style={{ color }}>
-                <EditableText
-                  initialValue={data.title}
-                  onSave={handleUpdateTitle}
-                  style={{ color }}
-                  className="inline-block min-w-50"
-                  color={color}
-                />
-              </h1>
-              {data.subtitle && (
-                <div
-                  className={cn(
-                    "text-2xl font-light tracking-wide",
-                    isDarkMode ? "text-gray-300" : "text-gray-500",
-                  )}
-                >
-                  <EditableText
-                    initialValue={data.subtitle}
-                    onSave={handleUpdateSubtitle}
-                  />
-                </div>
-              )}
-              <div
-                className="mt-12 h-1 w-24 rounded-full"
-                style={{ backgroundColor: color }}
-              />
-            </Card>
-          </div>
-        </div>
-
-        {/* Content Slides */}
-        <div className="grid grid-cols-1 gap-12 max-w-4xl mx-auto">
-          {data.slides.map((slide, index) => (
-            <div
-              key={index}
-              id={`slide-${index}`}
-              className="pptx-slide-export"
-            >
+          <ScaledSlide>
+            <div id="slide-title" className="w-full h-full pptx-slide-export">
               <Card
                 className={cn(
-                  "aspect-video flex flex-col overflow-hidden shadow-lg hover:shadow-xl transition-shadow border-t-4",
+                  "w-full h-full flex flex-col justify-center items-center text-center p-12 shadow-xl border-t-8",
                   isDarkMode ? "bg-black text-white" : "bg-white",
                 )}
                 style={{ borderTopColor: color }}
               >
-                <CardHeader
-                  className={cn(
-                    "pb-4 pt-8 px-12",
-                    isDarkMode ? "bg-black" : "bg-white",
-                  )}
-                >
-                  <CardTitle className="text-3xl font-bold" style={{ color }}>
+                <h1 className="text-5xl font-bold mb-6" style={{ color }}>
+                  <EditableText
+                    initialValue={data.title}
+                    onSave={handleUpdateTitle}
+                    style={{ color }}
+                    className="inline-block min-w-50"
+                    color={color}
+                  />
+                </h1>
+                {data.subtitle && (
+                  <div
+                    className={cn(
+                      "text-2xl font-light tracking-wide",
+                      isDarkMode ? "text-gray-300" : "text-gray-500",
+                    )}
+                  >
                     <EditableText
-                      initialValue={slide.title}
-                      onSave={(val) => handleUpdateSlideTitle(index, val)}
+                      initialValue={data.subtitle}
+                      onSave={handleUpdateSubtitle}
                     />
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="flex-1 px-12 pb-8 flex items-center">
-                  {slide.layout === "two_column" ? (
-                    <div className="grid grid-cols-2 gap-12 w-full">
-                      <ul className="list-disc pl-5 space-y-4">
-                        {slide.content
-                          .slice(0, Math.ceil(slide.content.length / 2))
-                          .map((point: string, i: number) => (
-                            <li
-                              key={i}
-                              className={cn(
-                                "text-lg leading-relaxed",
-                                isDarkMode ? "text-gray-300" : "text-gray-700",
-                              )}
-                            >
-                              <EditableText
-                                initialValue={point}
-                                onSave={(val) =>
-                                  handleUpdateSlideContent(index, i, val)
-                                }
-                                as="textarea"
-                              />
-                            </li>
-                          ))}
-                      </ul>
-                      <ul className="list-disc pl-5 space-y-4">
-                        {slide.content
-                          .slice(Math.ceil(slide.content.length / 2))
-                          .map((point: string, i: number) => {
-                            const trueIndex =
-                              i + Math.ceil(slide.content.length / 2);
-                            return (
+                  </div>
+                )}
+                <div
+                  className="mt-12 h-1 w-24 rounded-full"
+                  style={{ backgroundColor: color }}
+                />
+              </Card>
+            </div>
+          </ScaledSlide>
+        </div>
+
+        {/* Content Slides */}
+        <div className="grid grid-cols-1 gap-12 max-w-4xl mx-auto w-full">
+          {data.slides.map((slide, index) => (
+            <ScaledSlide key={index}>
+              <div
+                id={`slide-${index}`}
+                className="pptx-slide-export w-full h-full"
+              >
+                <Card
+                  className={cn(
+                    "w-full h-full flex flex-col overflow-hidden shadow-lg hover:shadow-xl transition-shadow border-t-4",
+                    isDarkMode ? "bg-black text-white" : "bg-white",
+                  )}
+                  style={{ borderTopColor: color }}
+                >
+                  <CardHeader
+                    className={cn(
+                      "pb-4 pt-8 px-12",
+                      isDarkMode ? "bg-black" : "bg-white",
+                    )}
+                  >
+                    <CardTitle className="text-3xl font-bold" style={{ color }}>
+                      <EditableText
+                        initialValue={slide.title}
+                        onSave={(val) => handleUpdateSlideTitle(index, val)}
+                      />
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex-1 px-12 pb-8 flex items-center">
+                    {slide.layout === "two_column" ? (
+                      <div className="grid grid-cols-2 gap-12 w-full">
+                        <ul className="list-disc pl-5 space-y-4">
+                          {slide.content
+                            .slice(0, Math.ceil(slide.content.length / 2))
+                            .map((point: string, i: number) => (
                               <li
-                                key={trueIndex}
+                                key={i}
                                 className={cn(
                                   "text-lg leading-relaxed",
                                   isDarkMode
@@ -205,56 +222,83 @@ export function SlidePreview({
                                 <EditableText
                                   initialValue={point}
                                   onSave={(val) =>
-                                    handleUpdateSlideContent(
-                                      index,
-                                      trueIndex,
-                                      val,
-                                    )
+                                    handleUpdateSlideContent(index, i, val)
                                   }
                                   as="textarea"
                                 />
                               </li>
-                            );
-                          })}
+                            ))}
+                        </ul>
+                        <ul className="list-disc pl-5 space-y-4">
+                          {slide.content
+                            .slice(Math.ceil(slide.content.length / 2))
+                            .map((point: string, i: number) => {
+                              const trueIndex =
+                                i + Math.ceil(slide.content.length / 2);
+                              return (
+                                <li
+                                  key={trueIndex}
+                                  className={cn(
+                                    "text-lg leading-relaxed",
+                                    isDarkMode
+                                      ? "text-gray-300"
+                                      : "text-gray-700",
+                                  )}
+                                >
+                                  <EditableText
+                                    initialValue={point}
+                                    onSave={(val) =>
+                                      handleUpdateSlideContent(
+                                        index,
+                                        trueIndex,
+                                        val,
+                                      )
+                                    }
+                                    as="textarea"
+                                  />
+                                </li>
+                              );
+                            })}
+                        </ul>
+                      </div>
+                    ) : (
+                      <ul className="list-disc pl-5 space-y-4 w-full">
+                        {slide.content.map((point: string, i: number) => (
+                          <li
+                            key={i}
+                            className={cn(
+                              "text-xl leading-relaxed",
+                              isDarkMode ? "text-gray-300" : "text-gray-700",
+                            )}
+                          >
+                            <EditableText
+                              initialValue={point}
+                              onSave={(val) =>
+                                handleUpdateSlideContent(index, i, val)
+                              }
+                              as="textarea"
+                            />
+                          </li>
+                        ))}
                       </ul>
-                    </div>
-                  ) : (
-                    <ul className="list-disc pl-5 space-y-4 w-full">
-                      {slide.content.map((point: string, i: number) => (
-                        <li
-                          key={i}
-                          className={cn(
-                            "text-xl leading-relaxed",
-                            isDarkMode ? "text-gray-300" : "text-gray-700",
-                          )}
-                        >
-                          <EditableText
-                            initialValue={point}
-                            onSave={(val) =>
-                              handleUpdateSlideContent(index, i, val)
-                            }
-                            as="textarea"
-                          />
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </CardContent>
-                <div
-                  className={cn(
-                    "h-4 w-full flex items-center justify-between px-6 text-[10px]",
-                    isDarkMode
-                      ? "bg-gray-900/50 text-gray-500"
-                      : "bg-gray-50 text-gray-300",
-                  )}
-                >
-                  <span>
-                    {index + 1} / {data.slides.length}
-                  </span>
-                  <span>AI Generated Mockup</span>
-                </div>
-              </Card>
-            </div>
+                    )}
+                  </CardContent>
+                  <div
+                    className={cn(
+                      "h-4 w-full flex items-center justify-between px-6 text-[10px]",
+                      isDarkMode
+                        ? "bg-gray-900/50 text-gray-500"
+                        : "bg-gray-50 text-gray-300",
+                    )}
+                  >
+                    <span>
+                      {index + 1} / {data.slides.length}
+                    </span>
+                    <span>AI Generated Mockup</span>
+                  </div>
+                </Card>
+              </div>
+            </ScaledSlide>
           ))}
         </div>
       </div>
