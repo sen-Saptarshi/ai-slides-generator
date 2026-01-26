@@ -261,6 +261,47 @@ export function SlidePreview({
                             })}
                         </ul>
                       </div>
+                    ) : slide.layout === "image_and_text" ? (
+                      <div className="grid grid-cols-2 gap-8 w-full h-80 items-center">
+                        <div className="relative w-full h-full min-h-0 rounded-lg overflow-hidden bg-muted flex items-center justify-center">
+                          {slide.imageUrl ? (
+                            <img
+                              src={slide.imageUrl}
+                              alt={slide.imagePrompt || "Slide image"}
+                              className="object-cover w-full h-full"
+                            />
+                          ) : (
+                            <div className="flex flex-col items-center justify-center text-muted-foreground p-4 text-center h-full w-full bg-gray-100 dark:bg-gray-800 animate-pulse">
+                              <div className="h-8 w-8 border-4 border-current border-t-transparent rounded-full animate-spin mb-4 opacity-50" />
+                              <p className="text-sm font-medium">
+                                Generating Image...
+                              </p>
+                              <p className="text-xs mt-1 opacity-50 truncate max-w-50 mx-auto">
+                                {slide.imagePrompt}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                        <ul className="list-disc pl-5 space-y-4">
+                          {slide.content.map((point: string, i: number) => (
+                            <li
+                              key={i}
+                              className={cn(
+                                "text-lg leading-relaxed",
+                                isDarkMode ? "text-gray-300" : "text-gray-700",
+                              )}
+                            >
+                              <EditableText
+                                initialValue={point}
+                                onSave={(val) =>
+                                  handleUpdateSlideContent(index, i, val)
+                                }
+                                as="textarea"
+                              />
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
                     ) : (
                       <ul className="list-disc pl-5 space-y-4 w-full">
                         {slide.content.map((point: string, i: number) => (

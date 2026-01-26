@@ -100,6 +100,7 @@ export default function Home() {
     setData(undefined);
     setError(null);
     try {
+      // 1. Generate text structure
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -112,12 +113,51 @@ export default function Home() {
 
       const result = await response.json();
       const newData = result.object || result;
+
+      // 2. Set initial data (text only)
       setData(newData);
       localStorage.setItem("presentation-data", JSON.stringify(newData));
+      setIsLoading(false); // Text is ready, show it!
+
+      // 3. Trigger background image generation
+      newData.slides.forEach(async (slide: any, index: number) => {
+        if (
+          slide.layout === "image_and_text" &&
+          slide.imagePrompt &&
+          !slide.imageUrl
+        ) {
+          try {
+            const imgResponse = await fetch("/api/generate-image", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ prompt: slide.imagePrompt }),
+            });
+
+            if (imgResponse.ok) {
+              const { imageUrl } = await imgResponse.json();
+              if (imageUrl) {
+                setData((prevData) => {
+                  if (!prevData) return prevData;
+                  const newSlides = [...prevData.slides];
+                  newSlides[index] = { ...newSlides[index], imageUrl };
+                  const updatedData = { ...prevData, slides: newSlides };
+                  // Update local storage so images persist on refresh
+                  localStorage.setItem(
+                    "presentation-data",
+                    JSON.stringify(updatedData),
+                  );
+                  return updatedData;
+                });
+              }
+            }
+          } catch (err) {
+            console.error(`Failed to generate image for slide ${index}`, err);
+          }
+        }
+      });
     } catch (error) {
       console.error("Failed to generate slides", error);
       setError("Failed to generate slides. Please try again.");
-    } finally {
       setIsLoading(false);
     }
   };

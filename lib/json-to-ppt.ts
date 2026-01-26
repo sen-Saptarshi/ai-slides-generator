@@ -103,6 +103,27 @@ export const createPptx = (data: Presentation, themeColor: string) => {
         align: "center",
         lineSpacing: 26,
       });
+    } else if (slideData.layout === "image_and_text") {
+      slide.addText(slideData.content.join("\n"), {
+        ...baseText,
+        x: 5.3,
+        y: contentY,
+        w: 4.0,
+        fontSize: 18,
+        bullet: true,
+        lineSpacing: 22,
+      });
+
+      if (slideData.imageUrl) {
+        slide.addImage({
+          path: slideData.imageUrl,
+          x: 0.8,
+          y: contentY,
+          w: 4.2,
+          h: 3.2,
+          sizing: { type: "contain", w: 4.2, h: 3.2 },
+        });
+      }
     } else {
       slide.addText(slideData.content.join("\n"), {
         ...baseText,

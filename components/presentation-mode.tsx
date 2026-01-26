@@ -157,9 +157,9 @@ export function PresentationMode({
               {slide.title}
             </CardTitle>
           </CardHeader>
-          <CardContent className="flex-1 px-16 pb-12 flex items-center">
+          <CardContent className="flex-1 px-16 pb-12 flex items-center justify-center overflow-hidden">
             {slide.layout === "two_column" ? (
-              <div className="grid grid-cols-2 gap-16 w-full">
+              <div className="grid grid-cols-2 gap-16 w-full items-start">
                 <ul className="list-disc pl-5 space-y-6">
                   {slide.content
                     .slice(0, Math.ceil(slide.content.length / 2))
@@ -190,6 +190,43 @@ export function PresentationMode({
                       </li>
                     ))}
                 </ul>
+              </div>
+            ) : slide.layout === "image_and_text" ? (
+              <div className="grid grid-cols-2 gap-12 w-full items-center h-full">
+                <div className="relative w-full h-full min-h-0 rounded-xl overflow-hidden shadow-lg bg-black/5 flex items-center justify-center">
+                  {slide.imageUrl ? (
+                    <img
+                      src={slide.imageUrl}
+                      alt={slide.imagePrompt || "Slide image"}
+                      className="object-cover w-full h-full"
+                    />
+                  ) : (
+                    <div className="px-6 py-12 text-center text-muted-foreground bg-gray-100 dark:bg-gray-800 w-full h-full flex flex-col items-center justify-center animate-pulse">
+                      <div className="h-10 w-10 border-4 border-current border-t-transparent rounded-full animate-spin mb-6 opacity-30" />
+                      <p className="text-lg font-medium">
+                        Generating visual...
+                      </p>
+                      <p className="text-sm mt-2 opacity-50 max-w-[80%] mx-auto line-clamp-3">
+                        {slide.imagePrompt}
+                      </p>
+                    </div>
+                  )}
+                </div>
+                <div className="h-full flex items-center">
+                  <ul className="list-disc pl-5 space-y-6">
+                    {slide.content.map((point: string, i: number) => (
+                      <li
+                        key={i}
+                        className={cn(
+                          "text-2xl leading-relaxed",
+                          isDarkMode ? "text-gray-300" : "text-gray-700",
+                        )}
+                      >
+                        {point}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </div>
             ) : (
               <ul className="list-disc pl-5 space-y-6 w-full">

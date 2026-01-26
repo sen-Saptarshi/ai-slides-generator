@@ -17,11 +17,12 @@ export async function generateSlide(topic: string) {
              Each slide must have:
              - "title": The title of the specific slide.
              - "content": An array of bullet points (limit to 3-5 concise points per slide).
-             - "layout": Choose best fit from "text" (standard), "title_only" (for emphasis), "two_column" (for comparisons or dense data).
+             - "layout": Choose best fit from "text" (standard), "title_only" (for emphasis), "two_column" (for comparisons or dense data), "image_and_text" (for visual slides).
              - "imagePrompt": A descriptive prompt for an image if relevant (optional).
 
           Ensure the content is engaging, professional, and follows a logical structure.
-          Keep text concise for a minimalist aesthetic.`,
+          Keep text concise for a minimalist aesthetic.
+          For "image_and_text" layout, "imagePrompt" is REQUIRED.`,
     });
 
     return output;
