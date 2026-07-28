@@ -1,16 +1,26 @@
 "use server";
 
+import { SLIDE_IMAGE_HEIGHT, SLIDE_IMAGE_WIDTH } from "@/lib/image-size";
+
+/** Snap to multiples of 8 (Flux / Workers AI often require this). */
+function snapDim(n: number, fallback: number) {
+  const v = Number.isFinite(n) ? Math.round(n) : fallback;
+  const clamped = Math.min(1024, Math.max(256, v));
+  return Math.round(clamped / 8) * 8;
+}
+
 export async function generateImage(
   prompt: string,
-  width: number = 512,
-  height: number = 512,
-//   steps: number = 50,
+  width: number = SLIDE_IMAGE_WIDTH,
+  height: number = SLIDE_IMAGE_HEIGHT,
 ) {
+  const w = snapDim(width, SLIDE_IMAGE_WIDTH);
+  const h = snapDim(height, SLIDE_IMAGE_HEIGHT);
+
   const formData = new FormData();
   formData.append("prompt", prompt);
-  formData.append("width", width.toString());
-  formData.append("height", height.toString());
-//   formData.append("steps", "4");
+  formData.append("width", String(w));
+  formData.append("height", String(h));
 
   const res = await fetch(
     `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/ai/run/@cf/black-forest-labs/flux-2-klein-4b`,
@@ -18,14 +28,10 @@ export async function generateImage(
       method: "POST",
       headers: {
         Authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}`,
-        // Note: Content-Type is intentionally removed here.
-        // When using FormData, the browser automatically sets the correct Content-Type with the boundary.
       },
       body: formData,
     },
   );
-
-  console.log(res);
 
   if (!res.ok) {
     throw new Error("Failed to generate image", { cause: await res.json() });

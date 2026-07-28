@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { presentationSchema } from "@/lib/schema/ppt-schema";
+import { requestSlideImage } from "@/lib/slide-image";
 import { isLightColor, cn } from "@/lib/utils";
 import { z } from "zod";
 import {
@@ -156,14 +157,7 @@ export default function Home() {
         }
         void (async () => {
           try {
-            const imgResponse = await fetch("/api/generate-image", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ prompt: slide.imagePrompt }),
-            });
-            if (!imgResponse.ok) return;
-            const { imageUrl } = await imgResponse.json();
-            if (!imageUrl) return;
+            const imageUrl = await requestSlideImage(slide.imagePrompt!);
             setData((prev) => {
               if (!prev) return prev;
               const slides = [...prev.slides];

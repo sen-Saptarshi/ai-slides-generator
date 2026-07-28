@@ -4,8 +4,8 @@ import { type CSSProperties } from "react";
 import { z } from "zod";
 import { presentationSchema } from "@/lib/schema/ppt-schema";
 import { EditableText } from "@/components/editable-text";
+import { SlideImageSlot } from "@/components/slide-image-slot";
 import { cn, SLIDE_H, SLIDE_W } from "@/lib/utils";
-import { ImageIcon, Loader2 } from "lucide-react";
 
 export type Presentation = z.infer<typeof presentationSchema>;
 export type Slide = Presentation["slides"][number];
@@ -15,6 +15,7 @@ export interface SlideEditHandlers {
   onSubtitle?: (value: string) => void;
   onSlideTitle?: (value: string) => void;
   onSlideContent?: (contentIndex: number, value: string) => void;
+  onSlideImage?: (next: { imageUrl: string; imagePrompt: string }) => void;
 }
 
 interface BaseProps {
@@ -274,43 +275,13 @@ export function SlideCanvas(props: SlideCanvasProps) {
             </div>
           ) : slide.layout === "image_and_text" ? (
             <div className="grid h-full max-h-[340px] w-full grid-cols-2 gap-8 items-center">
-              <div
-                className={cn(
-                  "relative h-full min-h-[280px] overflow-hidden rounded-lg",
-                  isDarkMode ? "bg-zinc-900" : "bg-zinc-100",
-                )}
-              >
-                {slide.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={slide.imageUrl}
-                    alt={slide.imagePrompt || "Slide image"}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div
-                    className={cn(
-                      "flex h-full w-full flex-col items-center justify-center gap-3 p-6 text-center",
-                      isDarkMode ? "text-zinc-500" : "text-zinc-400",
-                    )}
-                  >
-                    {slide.imagePrompt ? (
-                      <>
-                        <Loader2 className="h-8 w-8 animate-spin opacity-60" />
-                        <p className="text-sm font-medium">Generating image…</p>
-                        <p className="line-clamp-2 max-w-[90%] text-xs opacity-60">
-                          {slide.imagePrompt}
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <ImageIcon className="h-8 w-8 opacity-40" />
-                        <p className="text-sm">No image</p>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
+              <SlideImageSlot
+                imageUrl={slide.imageUrl}
+                imagePrompt={slide.imagePrompt}
+                isDarkMode={isDarkMode}
+                editable={editable}
+                onUpdate={handlers?.onSlideImage}
+              />
               <BulletList
                 items={slide.content}
                 editable={editable}

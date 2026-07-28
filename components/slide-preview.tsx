@@ -101,6 +101,16 @@ export function SlidePreview({
         slides[slideIndex] = { ...slides[slideIndex], content };
         onUpdate({ ...data, slides });
       },
+      onSlideImage: ({ imageUrl, imagePrompt }) => {
+        if (!data || !onUpdate) return;
+        const slides = [...data.slides];
+        slides[slideIndex] = {
+          ...slides[slideIndex],
+          imageUrl,
+          imagePrompt,
+        };
+        onUpdate({ ...data, slides });
+      },
     }),
     [data, onUpdate],
   );
