@@ -313,6 +313,7 @@ export function PresentationMode({
                         subtitle={data.subtitle}
                         color={accentColor}
                         darkSlides={darkSlides}
+                        annotations={data.annotations ?? []}
                       />
                     ) : (
                       <SlideCanvas
@@ -323,6 +324,9 @@ export function PresentationMode({
                         deckTitle={data.title}
                         color={accentColor}
                         darkSlides={darkSlides}
+                        annotations={
+                          data.slides[contentIndex]?.annotations ?? []
+                        }
                       />
                     )}
                   </ScaledStage>

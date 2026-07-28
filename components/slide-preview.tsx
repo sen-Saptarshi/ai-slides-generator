@@ -10,6 +10,14 @@ import {
   type SlideEditHandlers,
 } from "@/components/slide-canvas";
 import { ScaledStage } from "@/components/scaled-stage";
+import { AnnotationToolbar } from "@/components/annotations/annotation-toolbar";
+import {
+  createAnnotation,
+  ensureAnnotations,
+  removeAnnotation,
+  updateAnnotation,
+} from "@/lib/annotations";
+import type { Annotation, AnnotationKind } from "@/lib/schema/ppt-schema";
 import { cn, SLIDE_H, SLIDE_W } from "@/lib/utils";
 
 interface SlidePreviewProps {
@@ -31,6 +39,9 @@ export function SlidePreview({
 }: SlidePreviewProps) {
   // 0 = title, 1..n = content slides
   const [active, setActive] = useState(0);
+  const [selectedAnnotationId, setSelectedAnnotationId] = useState<
+    string | null
+  >(null);
   const total = data ? 1 + data.slides.length : 0;
   const deckKey = data ? `${data.title}::${data.slides.length}` : "";
   const [seenKey, setSeenKey] = useState(deckKey);
@@ -39,13 +50,17 @@ export function SlidePreview({
   if (deckKey !== seenKey) {
     setSeenKey(deckKey);
     setActive(0);
+    setSelectedAnnotationId(null);
   }
 
   const safeActive =
     total > 0 ? Math.min(Math.max(active, 0), total - 1) : 0;
+  const isTitleSlide = safeActive === 0;
+  const contentIndex = safeActive - 1;
 
   const go = useCallback(
     (delta: number) => {
+      setSelectedAnnotationId(null);
       setActive((i) =>
         Math.min(Math.max(i + delta, 0), Math.max(total - 1, 0)),
       );
@@ -57,8 +72,14 @@ export function SlidePreview({
     if (!data) return;
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable)
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        (e.target as HTMLElement)?.isContentEditable
+      )
         return;
+      // Don't change slides while transforming an annotation
+      if (selectedAnnotationId) return;
       if (e.key === "ArrowRight" || e.key === "ArrowDown") {
         e.preventDefault();
         go(1);
@@ -67,20 +88,46 @@ export function SlidePreview({
         go(-1);
       } else if (e.key === "Home") {
         e.preventDefault();
+        setSelectedAnnotationId(null);
         setActive(0);
       } else if (e.key === "End") {
         e.preventDefault();
+        setSelectedAnnotationId(null);
         setActive(total - 1);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [data, go, total]);
+  }, [data, go, total, selectedAnnotationId]);
+
+  const getAnnotationsForActive = useCallback((): Annotation[] => {
+    if (!data) return [];
+    if (isTitleSlide) return ensureAnnotations(data.annotations);
+    return ensureAnnotations(data.slides[contentIndex]?.annotations);
+  }, [data, isTitleSlide, contentIndex]);
+
+  const setAnnotationsForActive = useCallback(
+    (annotations: Annotation[]) => {
+      if (!data || !onUpdate) return;
+      if (isTitleSlide) {
+        onUpdate({ ...data, annotations });
+        return;
+      }
+      const slides = [...data.slides];
+      slides[contentIndex] = { ...slides[contentIndex], annotations };
+      onUpdate({ ...data, slides });
+    },
+    [data, onUpdate, isTitleSlide, contentIndex],
+  );
 
   const titleHandlers: SlideEditHandlers = useMemo(
     () => ({
       onTitle: (title) => data && onUpdate?.({ ...data, title }),
       onSubtitle: (subtitle) => data && onUpdate?.({ ...data, subtitle }),
+      onAnnotationsChange: (annotations) => {
+        if (!data || !onUpdate) return;
+        onUpdate({ ...data, annotations });
+      },
     }),
     [data, onUpdate],
   );
@@ -111,9 +158,33 @@ export function SlidePreview({
         };
         onUpdate({ ...data, slides });
       },
+      onAnnotationsChange: (annotations) => {
+        if (!data || !onUpdate) return;
+        const slides = [...data.slides];
+        slides[slideIndex] = { ...slides[slideIndex], annotations };
+        onUpdate({ ...data, slides });
+      },
     }),
     [data, onUpdate],
   );
+
+  const addShape = (kind: AnnotationKind) => {
+    const next = createAnnotation(kind);
+    const list = [...getAnnotationsForActive(), next];
+    setAnnotationsForActive(list);
+    setSelectedAnnotationId(next.id);
+  };
+
+  const addEmoji = (emoji: string) => {
+    const next = createAnnotation("emoji", { emoji });
+    const list = [...getAnnotationsForActive(), next];
+    setAnnotationsForActive(list);
+    setSelectedAnnotationId(next.id);
+  };
+
+  const selectedAnnotation =
+    getAnnotationsForActive().find((a) => a.id === selectedAnnotationId) ??
+    null;
 
   if (isLoading) {
     return (
@@ -152,8 +223,7 @@ export function SlidePreview({
     );
   }
 
-  const isTitle = safeActive === 0;
-  const contentIndex = safeActive - 1;
+  const activeAnnotations = getAnnotationsForActive();
 
   return (
     <div className={cn("flex h-full min-h-0 flex-col gap-4", font)}>
@@ -164,7 +234,7 @@ export function SlidePreview({
           <div className="min-w-0">
             <p className="truncate text-sm font-medium">{data.title}</p>
             <p className="text-xs text-muted-foreground">
-              {isTitle
+              {isTitleSlide
                 ? "Title slide"
                 : `Slide ${contentIndex + 1} · ${data.slides[contentIndex]?.layout?.replaceAll("_", " ")}`}
             </p>
@@ -197,11 +267,30 @@ export function SlidePreview({
         </div>
       </div>
 
+      <AnnotationToolbar
+        selected={selectedAnnotation}
+        onAddShape={addShape}
+        onAddEmoji={addEmoji}
+        onPatchSelected={(patch) => {
+          if (!selectedAnnotationId) return;
+          setAnnotationsForActive(
+            updateAnnotation(activeAnnotations, selectedAnnotationId, patch),
+          );
+        }}
+        onDeleteSelected={() => {
+          if (!selectedAnnotationId) return;
+          setAnnotationsForActive(
+            removeAnnotation(activeAnnotations, selectedAnnotationId),
+          );
+          setSelectedAnnotationId(null);
+        }}
+      />
+
       {/* Main stage — app chrome always dark; slides paint their own theme */}
       <div className="relative flex flex-1 items-center justify-center overflow-hidden rounded-2xl border border-zinc-800 bg-[radial-gradient(ellipse_at_center,_#27272a_0%,_#09090b_70%)] p-4 sm:p-6">
         <div className="w-full max-w-5xl">
           <ScaledStage maxScale={1}>
-            {isTitle ? (
+            {isTitleSlide ? (
               <SlideCanvas
                 kind="title"
                 title={data.title}
@@ -210,6 +299,9 @@ export function SlidePreview({
                 darkSlides={darkSlides}
                 editable
                 handlers={titleHandlers}
+                annotations={ensureAnnotations(data.annotations)}
+                selectedAnnotationId={selectedAnnotationId}
+                onSelectAnnotation={setSelectedAnnotationId}
               />
             ) : (
               <SlideCanvas
@@ -222,6 +314,11 @@ export function SlidePreview({
                 darkSlides={darkSlides}
                 editable
                 handlers={contentHandlers(contentIndex)}
+                annotations={ensureAnnotations(
+                  data.slides[contentIndex]?.annotations,
+                )}
+                selectedAnnotationId={selectedAnnotationId}
+                onSelectAnnotation={setSelectedAnnotationId}
               />
             )}
           </ScaledStage>
@@ -233,7 +330,10 @@ export function SlidePreview({
         <div className="flex gap-2 overflow-x-auto pb-1 pt-0.5 [scrollbar-width:thin]">
           <Thumb
             active={safeActive === 0}
-            onClick={() => setActive(0)}
+            onClick={() => {
+              setSelectedAnnotationId(null);
+              setActive(0);
+            }}
             label="Title"
           >
             <div
@@ -250,6 +350,7 @@ export function SlidePreview({
                 subtitle={data.subtitle}
                 color={accentColor}
                 darkSlides={darkSlides}
+                annotations={ensureAnnotations(data.annotations)}
               />
             </div>
           </Thumb>
@@ -258,7 +359,10 @@ export function SlidePreview({
             <Thumb
               key={i}
               active={safeActive === i + 1}
-              onClick={() => setActive(i + 1)}
+              onClick={() => {
+                setSelectedAnnotationId(null);
+                setActive(i + 1);
+              }}
               label={`${i + 1}`}
             >
               <div
@@ -277,6 +381,7 @@ export function SlidePreview({
                   deckTitle={data.title}
                   color={accentColor}
                   darkSlides={darkSlides}
+                  annotations={ensureAnnotations(slide.annotations)}
                 />
               </div>
             </Thumb>
@@ -296,6 +401,7 @@ export function SlidePreview({
           subtitle={data.subtitle}
           color={accentColor}
           darkSlides={darkSlides}
+          annotations={ensureAnnotations(data.annotations)}
         />
         {data.slides.map((slide, i) => (
           <SlideCanvas
@@ -308,6 +414,7 @@ export function SlidePreview({
             deckTitle={data.title}
             color={accentColor}
             darkSlides={darkSlides}
+            annotations={ensureAnnotations(slide.annotations)}
           />
         ))}
       </div>

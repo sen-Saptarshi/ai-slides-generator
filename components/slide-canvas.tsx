@@ -2,9 +2,14 @@
 
 import { type CSSProperties } from "react";
 import { z } from "zod";
-import { presentationSchema } from "@/lib/schema/ppt-schema";
+import {
+  presentationSchema,
+  type Annotation,
+} from "@/lib/schema/ppt-schema";
 import { EditableText } from "@/components/editable-text";
 import { SlideImageSlot } from "@/components/slide-image-slot";
+import { AnnotationLayer } from "@/components/annotations/annotation-layer";
+import { ensureAnnotations } from "@/lib/annotations";
 import { cn, SLIDE_H, SLIDE_W } from "@/lib/utils";
 
 export type Presentation = z.infer<typeof presentationSchema>;
@@ -16,6 +21,7 @@ export interface SlideEditHandlers {
   onSlideTitle?: (value: string) => void;
   onSlideContent?: (contentIndex: number, value: string) => void;
   onSlideImage?: (next: { imageUrl: string; imagePrompt: string }) => void;
+  onAnnotationsChange?: (annotations: Annotation[]) => void;
 }
 
 interface BaseProps {
@@ -25,6 +31,9 @@ interface BaseProps {
   className?: string;
   style?: CSSProperties;
   id?: string;
+  annotations?: Annotation[];
+  selectedAnnotationId?: string | null;
+  onSelectAnnotation?: (id: string | null) => void;
 }
 
 interface TitleSlideProps extends BaseProps {
@@ -142,7 +151,21 @@ export function SlideCanvas(props: SlideCanvasProps) {
     className,
     style,
     id,
+    annotations,
+    selectedAnnotationId = null,
+    onSelectAnnotation,
   } = props;
+
+  const anns = ensureAnnotations(annotations);
+  const annotationLayer = (
+    <AnnotationLayer
+      annotations={anns}
+      editable={editable}
+      selectedId={selectedAnnotationId}
+      onSelect={onSelectAnnotation}
+      onChange={props.handlers?.onAnnotationsChange}
+    />
+  );
 
   const shell = cn(
     "relative flex h-full w-full flex-col overflow-hidden rounded-xl border shadow-2xl",
@@ -154,7 +177,7 @@ export function SlideCanvas(props: SlideCanvasProps) {
 
   const accentBar = (
     <div
-      className="absolute inset-x-0 top-0 h-1.5"
+      className="absolute inset-x-0 top-0 h-1.5 z-10"
       style={{ backgroundColor: color }}
     />
   );
@@ -167,7 +190,12 @@ export function SlideCanvas(props: SlideCanvasProps) {
         style={{ width: SLIDE_W, height: SLIDE_H, ...style }}
       >
         {accentBar}
-        <div className="flex h-full flex-col items-center justify-center px-16 text-center">
+        <div
+          className="relative z-0 flex h-full flex-col items-center justify-center px-16 text-center"
+          onPointerDown={() => {
+            if (editable) onSelectAnnotation?.(null);
+          }}
+        >
           <div
             className="mb-8 h-1 w-16 rounded-full opacity-80"
             style={{ backgroundColor: color }}
@@ -197,6 +225,7 @@ export function SlideCanvas(props: SlideCanvasProps) {
             </p>
           ) : null}
         </div>
+        {annotationLayer}
       </div>
     );
   }
@@ -211,7 +240,12 @@ export function SlideCanvas(props: SlideCanvasProps) {
       style={{ width: SLIDE_W, height: SLIDE_H, ...style }}
     >
       {accentBar}
-      <div className="flex min-h-0 flex-1 flex-col px-12 pb-4 pt-10">
+      <div
+        className="relative z-0 flex min-h-0 flex-1 flex-col px-12 pb-4 pt-10"
+        onPointerDown={() => {
+          if (editable) onSelectAnnotation?.(null);
+        }}
+      >
         {slide.layout !== "title_only" ? (
           <h2 className="mb-6 shrink-0 text-3xl font-bold tracking-tight">
             <TextOrEdit
@@ -314,6 +348,7 @@ export function SlideCanvas(props: SlideCanvasProps) {
         </span>
         <span className="truncate max-w-[60%]">{deckTitle}</span>
       </div>
+      {annotationLayer}
     </div>
   );
 }
