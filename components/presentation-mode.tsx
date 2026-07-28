@@ -20,6 +20,10 @@ import {
 import { cn } from "@/lib/utils";
 import { SlideCanvas, type Presentation } from "@/components/slide-canvas";
 import { ScaledStage } from "@/components/scaled-stage";
+import {
+  DEFAULT_TEMPLATE,
+  type SlideTemplateId,
+} from "@/lib/slide-templates";
 import { motion, AnimatePresence, type Transition } from "framer-motion";
 
 interface PresentationModeProps {
@@ -28,6 +32,7 @@ interface PresentationModeProps {
   font: string;
   onClose: () => void;
   darkSlides?: boolean;
+  template?: SlideTemplateId;
 }
 
 type ViewMode = "standard" | "wide" | "full";
@@ -86,6 +91,7 @@ export function PresentationMode({
   font,
   onClose,
   darkSlides = false,
+  template = DEFAULT_TEMPLATE,
 }: PresentationModeProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [viewMode, setViewMode] = useState<ViewMode>("wide");
@@ -313,6 +319,8 @@ export function PresentationMode({
                         subtitle={data.subtitle}
                         color={accentColor}
                         darkSlides={darkSlides}
+                        template={template}
+                        fontClass={font}
                         annotations={data.annotations ?? []}
                       />
                     ) : (
@@ -324,6 +332,8 @@ export function PresentationMode({
                         deckTitle={data.title}
                         color={accentColor}
                         darkSlides={darkSlides}
+                        template={template}
+                        fontClass={font}
                         annotations={
                           data.slides[contentIndex]?.annotations ?? []
                         }

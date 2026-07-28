@@ -27,6 +27,11 @@ import {
   type SlideTheme,
 } from "@/lib/presentation-store";
 import {
+  DEFAULT_TEMPLATE,
+  type SlideTemplateId,
+} from "@/lib/slide-templates";
+import { TemplatePicker } from "@/components/template-picker";
+import {
   ArrowLeft,
   ChevronDown,
   Download,
@@ -53,6 +58,8 @@ export default function EditPage() {
   const [accentColor, setAccentColor] = useState("#d4a853");
   const [font, setFont] = useState("");
   const [slideTheme, setSlideTheme] = useState<SlideTheme>("light");
+  const [template, setTemplate] =
+    useState<SlideTemplateId>(DEFAULT_TEMPLATE);
   const [exportFormat, setExportFormat] = useState<"pptx" | "pdf">("pptx");
   const [exportQuality, setExportQuality] = useState<"high" | "medium">("high");
 
@@ -64,6 +71,7 @@ export default function EditPage() {
     setAccentColor(prefs.accentColor);
     setFont(prefs.font);
     setSlideTheme(prefs.slideTheme);
+    setTemplate(prefs.template);
 
     const deck = loadPresentation();
     if (!deck) {
@@ -96,6 +104,11 @@ export default function EditPage() {
   const handleSlideTheme = (theme: SlideTheme) => {
     setSlideTheme(theme);
     savePrefs({ slideTheme: theme });
+  };
+
+  const handleTemplate = (id: SlideTemplateId) => {
+    setTemplate(id);
+    savePrefs({ template: id });
   };
 
   const handleClear = () => {
@@ -249,6 +262,12 @@ export default function EditPage() {
                 </p>
 
                 <div className="space-y-4">
+                  <TemplatePicker
+                    value={template}
+                    onChange={handleTemplate}
+                    compact
+                  />
+
                   <div className="space-y-2">
                     <Label className="text-zinc-300">Slide theme</Label>
                     <div className="flex rounded-lg border border-zinc-700 p-0.5">
@@ -448,6 +467,7 @@ export default function EditPage() {
             onUpdate={handleDataUpdate}
             font={font}
             darkSlides={darkSlides}
+            template={template}
           />
         </main>
       </div>
@@ -458,6 +478,7 @@ export default function EditPage() {
           accentColor={slideAccent}
           font={font}
           darkSlides={darkSlides}
+          template={template}
           onClose={() => setIsPresenting(false)}
         />
       ) : null}

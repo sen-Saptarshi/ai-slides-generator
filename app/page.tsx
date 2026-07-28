@@ -26,6 +26,11 @@ import {
   savePresentation,
   type SlideTheme,
 } from "@/lib/presentation-store";
+import {
+  DEFAULT_TEMPLATE,
+  type SlideTemplateId,
+} from "@/lib/slide-templates";
+import { TemplatePicker } from "@/components/template-picker";
 import { cn } from "@/lib/utils";
 
 /** localStorage does not emit; storage event covers other tabs only. */
@@ -82,6 +87,8 @@ export default function HomePage() {
   // User edits this session (null = use stored / SSR default).
   const [accentOverride, setAccentOverride] = useState<string | null>(null);
   const [themeOverride, setThemeOverride] = useState<SlideTheme | null>(null);
+  const [templateOverride, setTemplateOverride] =
+    useState<SlideTemplateId | null>(null);
 
   // Hydration-safe: getServerSnapshot matches SSR; client snapshot after hydrate.
   const hasDraft = useSyncExternalStore(
@@ -98,10 +105,13 @@ export default function HomePage() {
   const storedPrefs = JSON.parse(prefsJson) as {
     accentColor: string;
     slideTheme: SlideTheme;
+    template?: SlideTemplateId;
   };
 
   const accentColor = accentOverride ?? storedPrefs.accentColor;
   const slideTheme = themeOverride ?? storedPrefs.slideTheme;
+  const template =
+    templateOverride ?? storedPrefs.template ?? DEFAULT_TEMPLATE;
 
   useEffect(() => {
     document.documentElement.classList.add("dark");
@@ -120,6 +130,11 @@ export default function HomePage() {
     savePrefs({ accentColor: c });
   };
 
+  const onTemplate = (id: SlideTemplateId) => {
+    setTemplateOverride(id);
+    savePrefs({ template: id });
+  };
+
   const pickPreset = (id: string, prompt: string) => {
     setActivePreset(id);
     setTopic(prompt);
@@ -134,7 +149,7 @@ export default function HomePage() {
     setLoading(true);
     setError(null);
     try {
-      savePrefs({ accentColor, slideTheme });
+      savePrefs({ accentColor, slideTheme, template });
       const data = await generatePresentation(trimmed);
       savePresentation(data);
       router.push("/edit");
@@ -250,6 +265,8 @@ export default function HomePage() {
                 (slides only — app stays dark)
               </span>
             </p>
+
+            <TemplatePicker value={template} onChange={onTemplate} />
 
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div className="flex flex-1 flex-wrap items-end gap-4">

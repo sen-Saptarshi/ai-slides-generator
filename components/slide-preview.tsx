@@ -18,6 +18,10 @@ import {
   updateAnnotation,
 } from "@/lib/annotations";
 import type { Annotation, AnnotationKind } from "@/lib/schema/ppt-schema";
+import {
+  DEFAULT_TEMPLATE,
+  type SlideTemplateId,
+} from "@/lib/slide-templates";
 import { cn, SLIDE_H, SLIDE_W } from "@/lib/utils";
 
 interface SlidePreviewProps {
@@ -27,6 +31,7 @@ interface SlidePreviewProps {
   onUpdate?: (newData: Presentation) => void;
   font?: string;
   darkSlides?: boolean;
+  template?: SlideTemplateId;
 }
 
 export function SlidePreview({
@@ -36,6 +41,7 @@ export function SlidePreview({
   onUpdate,
   font = "",
   darkSlides = false,
+  template = DEFAULT_TEMPLATE,
 }: SlidePreviewProps) {
   // 0 = title, 1..n = content slides
   const [active, setActive] = useState(0);
@@ -297,6 +303,8 @@ export function SlidePreview({
                 subtitle={data.subtitle}
                 color={accentColor}
                 darkSlides={darkSlides}
+                template={template}
+                fontClass={font}
                 editable
                 handlers={titleHandlers}
                 annotations={ensureAnnotations(data.annotations)}
@@ -312,6 +320,8 @@ export function SlidePreview({
                 deckTitle={data.title}
                 color={accentColor}
                 darkSlides={darkSlides}
+                template={template}
+                fontClass={font}
                 editable
                 handlers={contentHandlers(contentIndex)}
                 annotations={ensureAnnotations(
@@ -350,6 +360,8 @@ export function SlidePreview({
                 subtitle={data.subtitle}
                 color={accentColor}
                 darkSlides={darkSlides}
+                template={template}
+                fontClass={font}
                 annotations={ensureAnnotations(data.annotations)}
               />
             </div>
@@ -381,6 +393,8 @@ export function SlidePreview({
                   deckTitle={data.title}
                   color={accentColor}
                   darkSlides={darkSlides}
+                template={template}
+                fontClass={font}
                   annotations={ensureAnnotations(slide.annotations)}
                 />
               </div>
@@ -401,6 +415,8 @@ export function SlidePreview({
           subtitle={data.subtitle}
           color={accentColor}
           darkSlides={darkSlides}
+                template={template}
+                fontClass={font}
           annotations={ensureAnnotations(data.annotations)}
         />
         {data.slides.map((slide, i) => (
@@ -414,6 +430,8 @@ export function SlidePreview({
             deckTitle={data.title}
             color={accentColor}
             darkSlides={darkSlides}
+                template={template}
+                fontClass={font}
             annotations={ensureAnnotations(slide.annotations)}
           />
         ))}

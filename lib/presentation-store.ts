@@ -1,4 +1,9 @@
 import { presentationSchema } from "@/lib/schema/ppt-schema";
+import {
+  DEFAULT_TEMPLATE,
+  isSlideTemplateId,
+  type SlideTemplateId,
+} from "@/lib/slide-templates";
 import { z } from "zod";
 
 export type PresentationData = z.infer<typeof presentationSchema>;
@@ -14,6 +19,7 @@ const KEYS = {
   /** Legacy key — migrated on read. */
   legacyTheme: "presentation-theme",
   accentColor: "presentation-color",
+  template: "presentation-template",
 } as const;
 
 export type PresentationPrefs = {
@@ -22,12 +28,15 @@ export type PresentationPrefs = {
   font: string;
   /** Slide backgrounds/text — not app chrome. */
   slideTheme: SlideTheme;
+  /** Visual layout system for slides. */
+  template: SlideTemplateId;
 };
 
 export const DEFAULT_PREFS: PresentationPrefs = {
   accentColor: "#d4a853",
   font: "",
   slideTheme: "light",
+  template: DEFAULT_TEMPLATE,
 };
 
 export function loadPresentation(): PresentationData | null {
@@ -64,11 +73,17 @@ export function loadPrefs(): PresentationPrefs {
     slideTheme = "light";
   }
 
+  const storedTemplate = localStorage.getItem(KEYS.template);
+  const template = isSlideTemplateId(storedTemplate)
+    ? storedTemplate
+    : DEFAULT_PREFS.template;
+
   return {
     accentColor:
       localStorage.getItem(KEYS.accentColor) || DEFAULT_PREFS.accentColor,
     font: localStorage.getItem(KEYS.font) || DEFAULT_PREFS.font,
     slideTheme,
+    template,
   };
 }
 
@@ -81,6 +96,9 @@ export function savePrefs(prefs: Partial<PresentationPrefs>) {
   }
   if (prefs.slideTheme !== undefined) {
     localStorage.setItem(KEYS.slideTheme, prefs.slideTheme);
+  }
+  if (prefs.template !== undefined) {
+    localStorage.setItem(KEYS.template, prefs.template);
   }
 }
 
