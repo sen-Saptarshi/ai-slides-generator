@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
@@ -18,12 +18,29 @@ import { Textarea } from "@/components/ui/textarea";
 import { ColorPicker } from "@/components/color-picker";
 import { generatePresentation } from "@/lib/generate-presentation";
 import {
+  DEFAULT_PREFS,
   hasSavedPresentation,
   loadPrefs,
+  resolveSlideAccent,
   savePrefs,
   savePresentation,
+  type SlideTheme,
 } from "@/lib/presentation-store";
-import { cn, isLightColor } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+
+/** localStorage does not emit; storage event covers other tabs only. */
+function subscribeStorage(onStoreChange: () => void) {
+  window.addEventListener("storage", onStoreChange);
+  return () => window.removeEventListener("storage", onStoreChange);
+}
+
+function getDraftSnapshot() {
+  return hasSavedPresentation();
+}
+
+function getDraftServerSnapshot() {
+  return false;
+}
 
 const PRESETS = [
   {
@@ -56,44 +73,51 @@ const PRESETS = [
   },
 ] as const;
 
-function readClientPrefs() {
-  if (typeof window === "undefined") {
-    return { color: "#0f172a", isDarkMode: false, hasDraft: false };
-  }
-  const prefs = loadPrefs();
-  return {
-    color: prefs.color,
-    isDarkMode: prefs.isDarkMode,
-    hasDraft: hasSavedPresentation(),
-  };
-}
-
 export default function HomePage() {
   const router = useRouter();
   const [topic, setTopic] = useState("");
-  const [boot] = useState(readClientPrefs);
-  const [color, setColor] = useState(boot.color);
-  const [isDarkMode, setIsDarkMode] = useState(boot.isDarkMode);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasDraft] = useState(boot.hasDraft);
   const [activePreset, setActivePreset] = useState<string | null>(null);
+  // User edits this session (null = use stored / SSR default).
+  const [accentOverride, setAccentOverride] = useState<string | null>(null);
+  const [themeOverride, setThemeOverride] = useState<SlideTheme | null>(null);
 
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", isDarkMode);
-  }, [isDarkMode]);
+  // Hydration-safe: getServerSnapshot matches SSR; client snapshot after hydrate.
+  const hasDraft = useSyncExternalStore(
+    subscribeStorage,
+    getDraftSnapshot,
+    getDraftServerSnapshot,
+  );
 
-  const accentFg = isLightColor(color) ? "#0a0a0a" : "#ffffff";
-
-  const applyTheme = (dark: boolean) => {
-    setIsDarkMode(dark);
-    savePrefs({ isDarkMode: dark });
-    document.documentElement.classList.toggle("dark", dark);
+  const prefsJson = useSyncExternalStore(
+    subscribeStorage,
+    () => JSON.stringify(loadPrefs()),
+    () => JSON.stringify(DEFAULT_PREFS),
+  );
+  const storedPrefs = JSON.parse(prefsJson) as {
+    accentColor: string;
+    slideTheme: SlideTheme;
   };
 
-  const onColor = (c: string) => {
-    setColor(c);
-    savePrefs({ color: c });
+  const accentColor = accentOverride ?? storedPrefs.accentColor;
+  const slideTheme = themeOverride ?? storedPrefs.slideTheme;
+
+  useEffect(() => {
+    document.documentElement.classList.add("dark");
+  }, []);
+
+  const slideAccent = resolveSlideAccent(accentColor, slideTheme);
+  const darkSlides = slideTheme === "dark";
+
+  const setTheme = (theme: SlideTheme) => {
+    setThemeOverride(theme);
+    savePrefs({ slideTheme: theme });
+  };
+
+  const onAccent = (c: string) => {
+    setAccentOverride(c);
+    savePrefs({ accentColor: c });
   };
 
   const pickPreset = (id: string, prompt: string) => {
@@ -110,7 +134,7 @@ export default function HomePage() {
     setLoading(true);
     setError(null);
     try {
-      savePrefs({ color, isDarkMode });
+      savePrefs({ accentColor, slideTheme });
       const data = await generatePresentation(trimmed);
       savePresentation(data);
       router.push("/edit");
@@ -142,10 +166,7 @@ export default function HomePage() {
 
       <header className="relative z-10 mx-auto flex max-w-5xl items-center justify-between px-6 py-6">
         <div className="flex items-center gap-2.5">
-          <div
-            className="flex h-9 w-9 items-center justify-center rounded-lg"
-            style={{ backgroundColor: color, color: accentFg }}
-          >
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#d4a853] text-zinc-950">
             <Presentation className="h-4 w-4" />
           </div>
           <span className="font-[family-name:var(--font-playfair)] text-lg tracking-tight">
@@ -221,68 +242,101 @@ export default function HomePage() {
             })}
           </div>
 
-          <div className="mt-4 flex flex-col gap-4 border-t border-white/10 pt-4 sm:flex-row sm:items-end sm:justify-between">
-            <div className="flex flex-1 flex-wrap items-end gap-4">
-              <div className="min-w-[140px] flex-1 space-y-1.5 sm:max-w-[200px]">
-                <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-                  Accent
-                </label>
-                <ColorPicker value={color} onChange={onColor} />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-                  Slide theme
-                </label>
-                <div className="flex rounded-lg border border-white/10 p-0.5">
-                  <button
-                    type="button"
-                    disabled={loading}
-                    onClick={() => applyTheme(false)}
-                    className={cn(
-                      "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs transition",
-                      !isDarkMode
-                        ? "bg-white text-zinc-900"
-                        : "text-zinc-400 hover:text-zinc-200",
-                    )}
-                  >
-                    <Sun className="h-3.5 w-3.5" /> Light
-                  </button>
-                  <button
-                    type="button"
-                    disabled={loading}
-                    onClick={() => applyTheme(true)}
-                    className={cn(
-                      "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs transition",
-                      isDarkMode
-                        ? "bg-zinc-100 text-zinc-900"
-                        : "text-zinc-400 hover:text-zinc-200",
-                    )}
-                  >
-                    <Moon className="h-3.5 w-3.5" /> Dark
-                  </button>
+          {/* Deck options — apply to slides only */}
+          <div className="mt-4 space-y-4 border-t border-white/10 pt-4">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+              Deck style
+              <span className="ml-2 font-normal normal-case tracking-normal text-zinc-600">
+                (slides only — app stays dark)
+              </span>
+            </p>
+
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <div className="flex flex-1 flex-wrap items-end gap-4">
+                <div className="min-w-[140px] flex-1 space-y-1.5 sm:max-w-[200px]">
+                  <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                    Slide accent
+                  </label>
+                  <ColorPicker value={accentColor} onChange={onAccent} />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                    Slide theme
+                  </label>
+                  <div className="flex rounded-lg border border-white/10 p-0.5">
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => setTheme("light")}
+                      className={cn(
+                        "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs transition",
+                        slideTheme === "light"
+                          ? "bg-white text-zinc-900"
+                          : "text-zinc-400 hover:text-zinc-200",
+                      )}
+                    >
+                      <Sun className="h-3.5 w-3.5" /> Light
+                    </button>
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() => setTheme("dark")}
+                      className={cn(
+                        "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs transition",
+                        slideTheme === "dark"
+                          ? "bg-zinc-100 text-zinc-900"
+                          : "text-zinc-400 hover:text-zinc-200",
+                      )}
+                    >
+                      <Moon className="h-3.5 w-3.5" /> Dark
+                    </button>
+                  </div>
+                </div>
+
+                {/* Live mini slide surface */}
+                <div
+                  className={cn(
+                    "hidden w-28 overflow-hidden rounded-md border sm:block",
+                    darkSlides
+                      ? "border-zinc-600 bg-zinc-950"
+                      : "border-zinc-300 bg-white",
+                  )}
+                  title="Slide surface preview"
+                >
+                  <div
+                    className="h-1 w-full"
+                    style={{ backgroundColor: slideAccent }}
+                  />
+                  <div className="px-2 py-1.5">
+                    <p
+                      className="truncate text-[10px] font-semibold"
+                      style={{ color: slideAccent }}
+                    >
+                      Preview
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <Button
-              type="button"
-              disabled={loading}
-              onClick={() => void generate()}
-              className="h-11 shrink-0 px-6 font-medium"
-              style={{ backgroundColor: color, color: accentFg }}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Crafting deck...
-                </>
-              ) : (
-                <>
-                  Generate
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </>
-              )}
-            </Button>
+              <Button
+                type="button"
+                disabled={loading}
+                onClick={() => void generate()}
+                className="h-11 shrink-0 bg-[#d4a853] px-6 font-medium text-zinc-950 hover:bg-[#e0b85e]"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Crafting deck...
+                  </>
+                ) : (
+                  <>
+                    Generate
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
 
           {error ? (

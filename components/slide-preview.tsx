@@ -15,19 +15,19 @@ import { cn, SLIDE_H, SLIDE_W } from "@/lib/utils";
 interface SlidePreviewProps {
   data?: Presentation;
   isLoading: boolean;
-  color: string;
+  accentColor: string;
   onUpdate?: (newData: Presentation) => void;
   font?: string;
-  isDarkMode?: boolean;
+  darkSlides?: boolean;
 }
 
 export function SlidePreview({
   data,
   isLoading,
-  color,
+  accentColor,
   onUpdate,
   font = "",
-  isDarkMode = false,
+  darkSlides = false,
 }: SlidePreviewProps) {
   // 0 = title, 1..n = content slides
   const [active, setActive] = useState(0);
@@ -118,16 +118,16 @@ export function SlidePreview({
   if (isLoading) {
     return (
       <div className="flex h-full min-h-[420px] flex-col gap-4">
-        <div className="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-zinc-300/60 bg-zinc-100/40 dark:border-zinc-700 dark:bg-zinc-900/40">
+        <div className="flex flex-1 items-center justify-center rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/40">
           <div className="w-full max-w-3xl space-y-4 px-6">
-            <Skeleton className="mx-auto aspect-video w-full rounded-xl" />
+            <Skeleton className="mx-auto aspect-video w-full rounded-xl bg-zinc-800" />
             <div className="flex justify-center gap-2">
               {[1, 2, 3, 4, 5].map((i) => (
-                <Skeleton key={i} className="h-14 w-24 rounded-md" />
+                <Skeleton key={i} className="h-14 w-24 rounded-md bg-zinc-800" />
               ))}
             </div>
-            <p className="text-center text-sm text-muted-foreground animate-pulse">
-              Crafting slides…
+            <p className="animate-pulse text-center text-sm text-zinc-500">
+              Crafting slides...
             </p>
           </div>
         </div>
@@ -137,16 +137,16 @@ export function SlidePreview({
 
   if (!data) {
     return (
-      <div className="flex h-full min-h-[420px] flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-300/70 bg-gradient-to-b from-zinc-50 to-zinc-100/80 px-6 text-center dark:border-zinc-700 dark:from-zinc-900 dark:to-zinc-950">
-        <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-900 text-white shadow-lg dark:bg-zinc-100 dark:text-zinc-900">
+      <div className="flex h-full min-h-[420px] flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-700 bg-zinc-900/50 px-6 text-center">
+        <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-900 shadow-lg">
           <Sparkles className="h-6 w-6" />
         </div>
-        <h2 className="mb-2 text-xl font-semibold tracking-tight">
+        <h2 className="mb-2 text-xl font-semibold tracking-tight text-zinc-100">
           Your deck preview
         </h2>
-        <p className="max-w-sm text-sm text-muted-foreground leading-relaxed">
-          Describe a topic on the left. Generate, then edit text in-place,
-          step through slides, and present fullscreen.
+        <p className="max-w-sm text-sm leading-relaxed text-zinc-500">
+          Generate a deck from the home page, then edit text in-place, step
+          through slides, and present fullscreen.
         </p>
       </div>
     );
@@ -197,15 +197,8 @@ export function SlidePreview({
         </div>
       </div>
 
-      {/* Main stage */}
-      <div
-        className={cn(
-          "relative flex flex-1 items-center justify-center overflow-hidden rounded-2xl border p-4 sm:p-6",
-          isDarkMode
-            ? "border-zinc-800 bg-[radial-gradient(ellipse_at_center,_#27272a_0%,_#09090b_70%)]"
-            : "border-zinc-200/80 bg-[radial-gradient(ellipse_at_center,_#f4f4f5_0%,_#e4e4e7_75%)]",
-        )}
-      >
+      {/* Main stage — app chrome always dark; slides paint their own theme */}
+      <div className="relative flex flex-1 items-center justify-center overflow-hidden rounded-2xl border border-zinc-800 bg-[radial-gradient(ellipse_at_center,_#27272a_0%,_#09090b_70%)] p-4 sm:p-6">
         <div className="w-full max-w-5xl">
           <ScaledStage maxScale={1}>
             {isTitle ? (
@@ -213,8 +206,8 @@ export function SlidePreview({
                 kind="title"
                 title={data.title}
                 subtitle={data.subtitle}
-                color={color}
-                isDarkMode={isDarkMode}
+                color={accentColor}
+                darkSlides={darkSlides}
                 editable
                 handlers={titleHandlers}
               />
@@ -225,8 +218,8 @@ export function SlidePreview({
                 index={contentIndex}
                 total={data.slides.length}
                 deckTitle={data.title}
-                color={color}
-                isDarkMode={isDarkMode}
+                color={accentColor}
+                darkSlides={darkSlides}
                 editable
                 handlers={contentHandlers(contentIndex)}
               />
@@ -242,7 +235,6 @@ export function SlidePreview({
             active={safeActive === 0}
             onClick={() => setActive(0)}
             label="Title"
-            isDarkMode={isDarkMode}
           >
             <div
               className="origin-top-left"
@@ -256,8 +248,8 @@ export function SlidePreview({
                 kind="title"
                 title={data.title}
                 subtitle={data.subtitle}
-                color={color}
-                isDarkMode={isDarkMode}
+                color={accentColor}
+                darkSlides={darkSlides}
               />
             </div>
           </Thumb>
@@ -268,7 +260,6 @@ export function SlidePreview({
               active={safeActive === i + 1}
               onClick={() => setActive(i + 1)}
               label={`${i + 1}`}
-              isDarkMode={isDarkMode}
             >
               <div
                 className="origin-top-left"
@@ -284,8 +275,8 @@ export function SlidePreview({
                   index={i}
                   total={data.slides.length}
                   deckTitle={data.title}
-                  color={color}
-                  isDarkMode={isDarkMode}
+                  color={accentColor}
+                  darkSlides={darkSlides}
                 />
               </div>
             </Thumb>
@@ -303,8 +294,8 @@ export function SlidePreview({
           kind="title"
           title={data.title}
           subtitle={data.subtitle}
-          color={color}
-          isDarkMode={isDarkMode}
+          color={accentColor}
+          darkSlides={darkSlides}
         />
         {data.slides.map((slide, i) => (
           <SlideCanvas
@@ -315,8 +306,8 @@ export function SlidePreview({
             index={i}
             total={data.slides.length}
             deckTitle={data.title}
-            color={color}
-            isDarkMode={isDarkMode}
+            color={accentColor}
+            darkSlides={darkSlides}
           />
         ))}
       </div>
@@ -329,39 +320,33 @@ function Thumb({
   active,
   onClick,
   label,
-  isDarkMode,
 }: {
   children: React.ReactNode;
   active: boolean;
   onClick: () => void;
   label: string;
-  isDarkMode: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "group relative shrink-0 overflow-hidden rounded-lg border-2 transition-all outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
+        "group relative shrink-0 overflow-hidden rounded-lg border-2 transition-all outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950",
         active
-          ? "border-zinc-900 shadow-md ring-1 ring-zinc-900/10 dark:border-white dark:ring-white/20"
-          : isDarkMode
-            ? "border-zinc-700 hover:border-zinc-500"
-            : "border-zinc-200 hover:border-zinc-400",
+          ? "border-zinc-100 shadow-md ring-1 ring-white/20"
+          : "border-zinc-700 hover:border-zinc-500",
       )}
       style={{ width: SLIDE_W * 0.14, height: SLIDE_H * 0.14 }}
       aria-label={`Go to ${label}`}
       aria-current={active ? "true" : undefined}
     >
-      <div className="pointer-events-none absolute inset-0 overflow-hidden bg-white dark:bg-zinc-950">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
         {children}
       </div>
       <span
         className={cn(
           "absolute bottom-1 right-1 rounded px-1 text-[9px] font-medium tabular-nums",
-          active
-            ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
-            : "bg-black/50 text-white",
+          active ? "bg-zinc-100 text-zinc-900" : "bg-black/50 text-white",
         )}
       >
         {label}

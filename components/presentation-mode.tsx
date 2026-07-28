@@ -24,10 +24,10 @@ import { motion, AnimatePresence, type Transition } from "framer-motion";
 
 interface PresentationModeProps {
   data: Presentation;
-  color: string;
+  accentColor: string;
   font: string;
   onClose: () => void;
-  isDarkMode?: boolean;
+  darkSlides?: boolean;
 }
 
 type ViewMode = "standard" | "wide" | "full";
@@ -82,10 +82,10 @@ const MOTION: Record<
 
 export function PresentationMode({
   data,
-  color,
+  accentColor,
   font,
   onClose,
-  isDarkMode = false,
+  darkSlides = false,
 }: PresentationModeProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [viewMode, setViewMode] = useState<ViewMode>("wide");
@@ -311,8 +311,8 @@ export function PresentationMode({
                         kind="title"
                         title={data.title}
                         subtitle={data.subtitle}
-                        color={color}
-                        isDarkMode={isDarkMode}
+                        color={accentColor}
+                        darkSlides={darkSlides}
                       />
                     ) : (
                       <SlideCanvas
@@ -321,8 +321,8 @@ export function PresentationMode({
                         index={contentIndex}
                         total={data.slides.length}
                         deckTitle={data.title}
-                        color={color}
-                        isDarkMode={isDarkMode}
+                        color={accentColor}
+                        darkSlides={darkSlides}
                       />
                     )}
                   </ScaledStage>

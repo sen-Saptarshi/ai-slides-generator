@@ -20,7 +20,7 @@ export interface SlideEditHandlers {
 
 interface BaseProps {
   color: string;
-  isDarkMode?: boolean;
+  darkSlides?: boolean;
   editable?: boolean;
   className?: string;
   style?: CSSProperties;
@@ -85,14 +85,14 @@ function BulletList({
   items,
   startIndex = 0,
   editable,
-  isDarkMode,
+  darkSlides,
   size = "md",
   onContent,
 }: {
   items: string[];
   startIndex?: number;
   editable?: boolean;
-  isDarkMode?: boolean;
+  darkSlides?: boolean;
   size?: "md" | "lg";
   onContent?: (contentIndex: number, value: string) => void;
 }) {
@@ -106,13 +106,13 @@ function BulletList({
             className={cn(
               "flex gap-3 leading-relaxed",
               size === "lg" ? "text-[22px]" : "text-lg",
-              isDarkMode ? "text-zinc-300" : "text-zinc-700",
+              darkSlides ? "text-zinc-300" : "text-zinc-700",
             )}
           >
             <span
               className={cn(
                 "mt-[0.55em] h-1.5 w-1.5 shrink-0 rounded-full",
-                isDarkMode ? "bg-zinc-500" : "bg-zinc-400",
+                darkSlides ? "bg-zinc-500" : "bg-zinc-400",
               )}
               aria-hidden
             />
@@ -137,7 +137,7 @@ function BulletList({
 export function SlideCanvas(props: SlideCanvasProps) {
   const {
     color,
-    isDarkMode = false,
+    darkSlides = false,
     editable = false,
     className,
     style,
@@ -146,7 +146,7 @@ export function SlideCanvas(props: SlideCanvasProps) {
 
   const shell = cn(
     "relative flex h-full w-full flex-col overflow-hidden rounded-xl border shadow-2xl",
-    isDarkMode
+    darkSlides
       ? "border-zinc-800 bg-zinc-950 text-white"
       : "border-zinc-200/80 bg-white text-zinc-900",
     className,
@@ -186,7 +186,7 @@ export function SlideCanvas(props: SlideCanvasProps) {
             <p
               className={cn(
                 "max-w-[80%] text-2xl font-light tracking-wide",
-                isDarkMode ? "text-zinc-400" : "text-zinc-500",
+                darkSlides ? "text-zinc-400" : "text-zinc-500",
               )}
             >
               <TextOrEdit
@@ -240,7 +240,7 @@ export function SlideCanvas(props: SlideCanvasProps) {
                 <p
                   className={cn(
                     "max-w-[70%] text-xl font-light",
-                    isDarkMode ? "text-zinc-400" : "text-zinc-500",
+                    darkSlides ? "text-zinc-400" : "text-zinc-500",
                   )}
                 >
                   <TextOrEdit
@@ -262,14 +262,14 @@ export function SlideCanvas(props: SlideCanvasProps) {
                 items={slide.content.slice(0, mid)}
                 startIndex={0}
                 editable={editable}
-                isDarkMode={isDarkMode}
+                darkSlides={darkSlides}
                 onContent={handlers?.onSlideContent}
               />
               <BulletList
                 items={slide.content.slice(mid)}
                 startIndex={mid}
                 editable={editable}
-                isDarkMode={isDarkMode}
+                darkSlides={darkSlides}
                 onContent={handlers?.onSlideContent}
               />
             </div>
@@ -278,14 +278,14 @@ export function SlideCanvas(props: SlideCanvasProps) {
               <SlideImageSlot
                 imageUrl={slide.imageUrl}
                 imagePrompt={slide.imagePrompt}
-                isDarkMode={isDarkMode}
+                darkSlides={darkSlides}
                 editable={editable}
                 onUpdate={handlers?.onSlideImage}
               />
               <BulletList
                 items={slide.content}
                 editable={editable}
-                isDarkMode={isDarkMode}
+                darkSlides={darkSlides}
                 onContent={handlers?.onSlideContent}
               />
             </div>
@@ -293,7 +293,7 @@ export function SlideCanvas(props: SlideCanvasProps) {
             <BulletList
               items={slide.content}
               editable={editable}
-              isDarkMode={isDarkMode}
+              darkSlides={darkSlides}
               size="lg"
               onContent={handlers?.onSlideContent}
             />
@@ -304,7 +304,7 @@ export function SlideCanvas(props: SlideCanvasProps) {
       <div
         className={cn(
           "flex h-9 shrink-0 items-center justify-between border-t px-6 text-[11px] tracking-wide",
-          isDarkMode
+          darkSlides
             ? "border-zinc-800 bg-zinc-900/60 text-zinc-500"
             : "border-zinc-100 bg-zinc-50 text-zinc-400",
         )}

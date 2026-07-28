@@ -15,18 +15,17 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  startBackgroundImages,
-} from "@/lib/generate-presentation";
+import { startBackgroundImages } from "@/lib/generate-presentation";
 import {
   clearPresentation,
   loadPrefs,
   loadPresentation,
+  resolveSlideAccent,
   savePrefs,
   savePresentation,
   type PresentationData,
+  type SlideTheme,
 } from "@/lib/presentation-store";
-import { cn, isLightColor } from "@/lib/utils";
 import {
   ArrowLeft,
   ChevronDown,
@@ -42,6 +41,7 @@ import {
 import { toPng, toJpeg } from "html-to-image";
 import pptxgen from "pptxgenjs";
 import jsPDF from "jspdf";
+import { cn } from "@/lib/utils";
 
 export default function EditPage() {
   const router = useRouter();
@@ -50,18 +50,20 @@ export default function EditPage() {
   const [error, setError] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isPresenting, setIsPresenting] = useState(false);
-  const [color, setColor] = useState("#0f172a");
+  const [accentColor, setAccentColor] = useState("#d4a853");
   const [font, setFont] = useState("");
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [slideTheme, setSlideTheme] = useState<SlideTheme>("light");
   const [exportFormat, setExportFormat] = useState<"pptx" | "pdf">("pptx");
   const [exportQuality, setExportQuality] = useState<"high" | "medium">("high");
 
   useEffect(() => {
+    // App chrome always dark — never tied to slide theme
+    document.documentElement.classList.add("dark");
+
     const prefs = loadPrefs();
-    setColor(prefs.color);
+    setAccentColor(prefs.accentColor);
     setFont(prefs.font);
-    setIsDarkMode(prefs.isDarkMode);
-    document.documentElement.classList.toggle("dark", prefs.isDarkMode);
+    setSlideTheme(prefs.slideTheme);
 
     const deck = loadPresentation();
     if (!deck) {
@@ -73,25 +75,17 @@ export default function EditPage() {
     startBackgroundImages(deck, setData);
   }, [router]);
 
-  useEffect(() => {
-    if (!ready) return;
-    document.documentElement.classList.toggle("dark", isDarkMode);
-  }, [isDarkMode, ready]);
-
-  const effectiveColor =
-    isDarkMode && (color === "#000000" || color === "#0f172a")
-      ? "#f8fafc"
-      : color;
-  const accentFg = isLightColor(effectiveColor) ? "#0a0a0a" : "#ffffff";
+  const slideAccent = resolveSlideAccent(accentColor, slideTheme);
+  const darkSlides = slideTheme === "dark";
 
   const handleDataUpdate = useCallback((newData: PresentationData) => {
     setData(newData);
     savePresentation(newData);
   }, []);
 
-  const handleColorChange = (c: string) => {
-    setColor(c);
-    savePrefs({ color: c });
+  const handleAccentChange = (c: string) => {
+    setAccentColor(c);
+    savePrefs({ accentColor: c });
   };
 
   const handleFontChange = (newFont: string) => {
@@ -99,10 +93,9 @@ export default function EditPage() {
     savePrefs({ font: newFont });
   };
 
-  const toggleTheme = () => {
-    const next = !isDarkMode;
-    setIsDarkMode(next);
-    savePrefs({ isDarkMode: next });
+  const handleSlideTheme = (theme: SlideTheme) => {
+    setSlideTheme(theme);
+    savePrefs({ slideTheme: theme });
   };
 
   const handleClear = () => {
@@ -125,7 +118,8 @@ export default function EditPage() {
           quality: imageQuality,
           pixelRatio,
           cacheBust: true,
-          backgroundColor: isDarkMode ? "#09090b" : "#ffffff",
+          // Match slide surface, not app chrome
+          backgroundColor: darkSlides ? "#09090b" : "#ffffff",
           width: element.offsetWidth || 960,
           height: element.offsetHeight || 540,
         };
@@ -208,124 +202,148 @@ export default function EditPage() {
 
   if (!ready || !data) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-50 text-sm text-zinc-500 dark:bg-zinc-950 dark:text-zinc-400">
+      <div className="flex min-h-screen items-center justify-center bg-zinc-950 text-sm text-zinc-400">
         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-        Opening editor…
+        Opening editor...
       </div>
     );
   }
 
   return (
-    <div
-      className={cn(
-        "min-h-screen transition-colors",
-        isDarkMode ? "bg-zinc-950 text-zinc-100" : "bg-zinc-50 text-zinc-900",
-      )}
-    >
+    <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="mx-auto grid min-h-screen max-w-[1600px] grid-cols-1 lg:grid-cols-12">
-        {/* Sidebar */}
-        <aside
-          className={cn(
-            "flex flex-col border-b lg:col-span-4 lg:h-screen lg:overflow-y-auto lg:border-b-0 lg:border-r",
-            isDarkMode
-              ? "border-zinc-800 bg-zinc-950"
-              : "border-zinc-200 bg-white",
-          )}
-        >
+        {/* App chrome — always dark */}
+        <aside className="flex flex-col border-b border-zinc-800 bg-zinc-950 lg:col-span-4 lg:h-screen lg:overflow-y-auto lg:border-b-0 lg:border-r">
           <div className="flex flex-1 flex-col gap-6 p-5 sm:p-6 lg:p-7">
             <header className="space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <Link
-                  href="/"
-                  className={cn(
-                    "inline-flex items-center gap-1.5 text-xs font-medium transition",
-                    isDarkMode
-                      ? "text-zinc-400 hover:text-zinc-200"
-                      : "text-zinc-500 hover:text-zinc-800",
-                  )}
-                >
-                  <ArrowLeft className="h-3.5 w-3.5" />
-                  Home
-                </Link>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={toggleTheme}
-                  title={isDarkMode ? "Light mode" : "Dark mode"}
-                  aria-label="Toggle theme"
-                >
-                  {isDarkMode ? (
-                    <Sun className="h-4 w-4" />
-                  ) : (
-                    <Moon className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
+              <Link
+                href="/"
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-400 transition hover:text-zinc-200"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Home
+              </Link>
 
               <div className="flex items-center gap-2.5">
-                <div
-                  className="flex h-9 w-9 items-center justify-center rounded-xl shadow-sm"
-                  style={{
-                    backgroundColor: effectiveColor,
-                    color: accentFg,
-                  }}
-                >
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-zinc-100 text-zinc-900 shadow-sm">
                   <Presentation className="h-4 w-4" />
                 </div>
                 <div className="min-w-0">
                   <h1 className="truncate text-lg font-semibold tracking-tight">
                     {data.title}
                   </h1>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-zinc-500">
                     {data.slides.length} slides · edit & export
                   </p>
                 </div>
               </div>
             </header>
 
-            <div className="space-y-5">
-              <div className="space-y-2">
-                <Label>Accent color</Label>
-                <ColorPicker value={color} onChange={handleColorChange} />
+            <section className="space-y-5">
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3">
+                <p className="mb-3 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                  Slide appearance
+                </p>
+                <p className="mb-3 text-[11px] leading-relaxed text-zinc-600">
+                  These settings style the deck only — not this editor.
+                </p>
+
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label className="text-zinc-300">Slide theme</Label>
+                    <div className="flex rounded-lg border border-zinc-700 p-0.5">
+                      <button
+                        type="button"
+                        onClick={() => handleSlideTheme("light")}
+                        className={cn(
+                          "flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs transition",
+                          slideTheme === "light"
+                            ? "bg-zinc-100 text-zinc-900"
+                            : "text-zinc-400 hover:text-zinc-200",
+                        )}
+                      >
+                        <Sun className="h-3.5 w-3.5" />
+                        Light slides
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSlideTheme("dark")}
+                        className={cn(
+                          "flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-2 text-xs transition",
+                          slideTheme === "dark"
+                            ? "bg-zinc-100 text-zinc-900"
+                            : "text-zinc-400 hover:text-zinc-200",
+                        )}
+                      >
+                        <Moon className="h-3.5 w-3.5" />
+                        Dark slides
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-zinc-300">Slide accent</Label>
+                    <ColorPicker
+                      value={accentColor}
+                      onChange={handleAccentChange}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-zinc-300">Slide font</Label>
+                    <FontPicker
+                      currentFont={font}
+                      onFontChange={handleFontChange}
+                    />
+                  </div>
+
+                  {/* Mini preview of slide surface */}
+                  <div
+                    className={cn(
+                      "overflow-hidden rounded-lg border",
+                      darkSlides
+                        ? "border-zinc-700 bg-zinc-950"
+                        : "border-zinc-200 bg-white",
+                    )}
+                  >
+                    <div
+                      className="h-1 w-full"
+                      style={{ backgroundColor: slideAccent }}
+                    />
+                    <div className="px-3 py-2.5">
+                      <p
+                        className={cn(
+                          "text-xs font-semibold",
+                          darkSlides ? "text-white" : "text-zinc-900",
+                        )}
+                        style={{ color: slideAccent }}
+                      >
+                        Accent preview
+                      </p>
+                      <p
+                        className={cn(
+                          "mt-0.5 text-[11px]",
+                          darkSlides ? "text-zinc-400" : "text-zinc-500",
+                        )}
+                      >
+                        {slideTheme === "dark" ? "Dark" : "Light"} slide surface
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <Label>Presentation font</Label>
-                <FontPicker
-                  currentFont={font}
-                  onFontChange={handleFontChange}
-                />
-              </div>
-
-              {error && (
-                <div
-                  className={cn(
-                    "rounded-lg border px-3 py-2 text-sm",
-                    isDarkMode
-                      ? "border-red-900/60 bg-red-950/50 text-red-300"
-                      : "border-red-100 bg-red-50 text-red-600",
-                  )}
-                >
+              {error ? (
+                <div className="rounded-lg border border-red-900/60 bg-red-950/50 px-3 py-2 text-sm text-red-300">
                   {error}
                 </div>
-              )}
-            </div>
+              ) : null}
+            </section>
 
-            <div
-              className={cn(
-                "mt-auto space-y-2 border-t pt-4",
-                isDarkMode ? "border-zinc-800" : "border-zinc-200",
-              )}
-            >
+            <div className="mt-auto space-y-2 border-t border-zinc-800 pt-4">
               <Button
                 onClick={() => setIsPresenting(true)}
-                className={cn(
-                  "w-full",
-                  isDarkMode
-                    ? "bg-zinc-100 text-zinc-900 hover:bg-white"
-                    : "bg-zinc-900 text-white hover:bg-zinc-800",
-                )}
+                className="w-full bg-zinc-100 text-zinc-900 hover:bg-white"
               >
                 <Play className="mr-2 h-4 w-4" />
                 Present
@@ -378,16 +396,12 @@ export default function EditPage() {
               <Button
                 onClick={handleExport}
                 disabled={isExporting}
-                className="w-full"
-                style={{
-                  backgroundColor: effectiveColor,
-                  color: accentFg,
-                }}
+                className="w-full bg-zinc-800 text-zinc-100 hover:bg-zinc-700"
               >
                 {isExporting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Exporting…
+                    Exporting...
                   </>
                 ) : (
                   <>
@@ -411,7 +425,7 @@ export default function EditPage() {
                   type="button"
                   variant="outline"
                   onClick={handleClear}
-                  className="w-full text-red-600 hover:text-red-700 dark:text-red-400"
+                  className="w-full text-red-400 hover:text-red-300"
                 >
                   <Trash2 className="mr-2 h-4 w-4" />
                   Delete
@@ -419,39 +433,34 @@ export default function EditPage() {
               </div>
             </div>
 
-            <p className="text-center text-[11px] text-muted-foreground">
-              ← → navigate · click text to edit
+            <p className="text-center text-[11px] text-zinc-600">
+              Arrow keys navigate · click slide text to edit
             </p>
           </div>
         </aside>
 
-        {/* Preview */}
-        <main
-          className={cn(
-            "flex min-h-[70vh] flex-col p-4 sm:p-6 lg:col-span-8 lg:h-screen lg:overflow-hidden",
-            isDarkMode ? "bg-zinc-900/40" : "bg-zinc-100/80",
-          )}
-        >
+        {/* Preview stage chrome — always dark workspace */}
+        <main className="flex min-h-[70vh] flex-col bg-zinc-900/50 p-4 sm:p-6 lg:col-span-8 lg:h-screen lg:overflow-hidden">
           <SlidePreview
             data={data}
             isLoading={false}
-            color={effectiveColor}
+            accentColor={slideAccent}
             onUpdate={handleDataUpdate}
             font={font}
-            isDarkMode={isDarkMode}
+            darkSlides={darkSlides}
           />
         </main>
       </div>
 
-      {isPresenting && (
+      {isPresenting ? (
         <PresentationMode
           data={data}
-          color={effectiveColor}
+          accentColor={slideAccent}
           font={font}
-          isDarkMode={isDarkMode}
+          darkSlides={darkSlides}
           onClose={() => setIsPresenting(false)}
         />
-      )}
+      ) : null}
     </div>
   );
 }

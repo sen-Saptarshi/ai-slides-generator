@@ -9,7 +9,7 @@ import { requestSlideImage } from "@/lib/slide-image";
 interface SlideImageSlotProps {
   imageUrl?: string;
   imagePrompt?: string;
-  isDarkMode?: boolean;
+  darkSlides?: boolean;
   /** Preview edit mode only */
   editable?: boolean;
   onUpdate?: (next: { imageUrl: string; imagePrompt: string }) => void;
@@ -18,7 +18,7 @@ interface SlideImageSlotProps {
 export function SlideImageSlot({
   imageUrl,
   imagePrompt = "",
-  isDarkMode = false,
+  darkSlides = false,
   editable = false,
   onUpdate,
 }: SlideImageSlotProps) {
@@ -54,7 +54,7 @@ export function SlideImageSlot({
     <div
       className={cn(
         "group relative h-full min-h-[280px] overflow-hidden rounded-lg",
-        isDarkMode ? "bg-zinc-900" : "bg-zinc-100",
+        darkSlides ? "bg-zinc-900" : "bg-zinc-100",
       )}
     >
       {imageUrl ? (
@@ -69,7 +69,7 @@ export function SlideImageSlot({
         <div
           className={cn(
             "flex h-full w-full flex-col items-center justify-center gap-3 p-6 text-center",
-            isDarkMode ? "text-zinc-500" : "text-zinc-400",
+            darkSlides ? "text-zinc-500" : "text-zinc-400",
           )}
         >
           {imagePrompt && !open ? (
