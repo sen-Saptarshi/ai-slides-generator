@@ -55,7 +55,7 @@ export function FontPicker({ currentFont, onFontChange }: FontPickerProps) {
           <span>{selectedFont.name}</span>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-56 p-1 bg-white">
+      <PopoverContent className="w-56 p-1">
         <div className="grid gap-1">
           {FONTS.map((font) => (
             <Button

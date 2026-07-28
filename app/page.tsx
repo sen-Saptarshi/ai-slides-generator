@@ -16,8 +16,18 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { presentationSchema } from "@/lib/schema/ppt-schema";
+import { isLightColor, cn } from "@/lib/utils";
 import { z } from "zod";
-import { Loader2, Play, Moon, Sun, Trash2, ChevronDown } from "lucide-react";
+import {
+  Loader2,
+  Play,
+  Moon,
+  Sun,
+  Trash2,
+  ChevronDown,
+  Download,
+  Sparkles,
+} from "lucide-react";
 
 import { toPng, toJpeg } from "html-to-image";
 import pptxgen from "pptxgenjs";
@@ -33,13 +43,14 @@ export default function Home() {
   const [data, setData] = useState<PresentationData | undefined>();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isExporting, setIsExporting] = useState(false); // Add export loading state
+  const [isExporting, setIsExporting] = useState(false);
   const [isPresenting, setIsPresenting] = useState(false);
-  const [color, setColor] = useState("#000000"); // Default color
-  const [font, setFont] = useState<string>(""); // Global font state
+  const [color, setColor] = useState("#0f172a");
+  const [font, setFont] = useState<string>("");
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [exportFormat, setExportFormat] = useState<"pptx" | "pdf">("pptx");
   const [exportQuality, setExportQuality] = useState<"high" | "medium">("high");
+  const [hydrated, setHydrated] = useState(false);
 
   const {
     register,
@@ -52,30 +63,42 @@ export default function Home() {
     const saved = localStorage.getItem("presentation-data");
     const savedFont = localStorage.getItem("presentation-font");
     const savedTheme = localStorage.getItem("presentation-theme");
+    const savedColor = localStorage.getItem("presentation-color");
 
     if (saved) {
       try {
         setData(JSON.parse(saved));
-      } catch (e) {
-        console.error("Failed to parse saved data");
+      } catch {
+        localStorage.removeItem("presentation-data");
       }
     }
-    if (savedFont) {
-      setFont(savedFont);
-    }
-    if (savedTheme === "dark") {
-      setIsDarkMode(true);
-    }
+    if (savedFont) setFont(savedFont);
+    if (savedTheme === "dark") setIsDarkMode(true);
+    if (savedColor) setColor(savedColor);
+    setHydrated(true);
   }, []);
 
-  // When in dark mode, if the accent color is black (default),
-  // we force it to white so it's visible against the black card background.
-  const effectiveColor = isDarkMode && color === "#000000" ? "#ffffff" : color;
+  useEffect(() => {
+    if (!hydrated) return;
+    document.documentElement.classList.toggle("dark", isDarkMode);
+  }, [isDarkMode, hydrated]);
+
+  const effectiveColor =
+    isDarkMode && (color === "#000000" || color === "#0f172a")
+      ? "#f8fafc"
+      : color;
+
+  const accentFg = isLightColor(effectiveColor) ? "#0a0a0a" : "#ffffff";
 
   const toggleTheme = () => {
-    const newTheme = !isDarkMode;
-    setIsDarkMode(newTheme);
-    localStorage.setItem("presentation-theme", newTheme ? "dark" : "light");
+    const next = !isDarkMode;
+    setIsDarkMode(next);
+    localStorage.setItem("presentation-theme", next ? "dark" : "light");
+  };
+
+  const handleColorChange = (c: string) => {
+    setColor(c);
+    localStorage.setItem("presentation-color", c);
   };
 
   const handleDataUpdate = (newData: PresentationData) => {
@@ -100,7 +123,6 @@ export default function Home() {
     setData(undefined);
     setError(null);
     try {
-      // 1. Generate text structure
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -112,52 +134,60 @@ export default function Home() {
       }
 
       const result = await response.json();
-      const newData = result.object || result;
+      if (result?.error) throw new Error(result.error);
 
-      // 2. Set initial data (text only)
+      const parsed = presentationSchema.safeParse(result.object ?? result);
+      if (!parsed.success) {
+        throw new Error("Invalid presentation data from model");
+      }
+      const newData = parsed.data;
+
       setData(newData);
       localStorage.setItem("presentation-data", JSON.stringify(newData));
-      setIsLoading(false); // Text is ready, show it!
+      setIsLoading(false);
 
-      // 3. Trigger background image generation
-      newData.slides.forEach(async (slide: any, index: number) => {
+      newData.slides.forEach((slide, index) => {
         if (
-          slide.layout === "image_and_text" &&
-          slide.imagePrompt &&
-          !slide.imageUrl
+          slide.layout !== "image_and_text" ||
+          !slide.imagePrompt ||
+          slide.imageUrl
         ) {
+          return;
+        }
+        void (async () => {
           try {
             const imgResponse = await fetch("/api/generate-image", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ prompt: slide.imagePrompt }),
             });
-
-            if (imgResponse.ok) {
-              const { imageUrl } = await imgResponse.json();
-              if (imageUrl) {
-                setData((prevData) => {
-                  if (!prevData) return prevData;
-                  const newSlides = [...prevData.slides];
-                  newSlides[index] = { ...newSlides[index], imageUrl };
-                  const updatedData = { ...prevData, slides: newSlides };
-                  // Update local storage so images persist on refresh
-                  localStorage.setItem(
-                    "presentation-data",
-                    JSON.stringify(updatedData),
-                  );
-                  return updatedData;
-                });
-              }
-            }
+            if (!imgResponse.ok) return;
+            const { imageUrl } = await imgResponse.json();
+            if (!imageUrl) return;
+            setData((prev) => {
+              if (!prev) return prev;
+              const slides = [...prev.slides];
+              if (slides[index]?.imageUrl) return prev;
+              slides[index] = { ...slides[index], imageUrl };
+              const updated = { ...prev, slides };
+              localStorage.setItem(
+                "presentation-data",
+                JSON.stringify(updated),
+              );
+              return updated;
+            });
           } catch (err) {
-            console.error(`Failed to generate image for slide ${index}`, err);
+            console.error(`Image failed for slide ${index}`, err);
           }
-        }
+        })();
       });
-    } catch (error) {
-      console.error("Failed to generate slides", error);
-      setError("Failed to generate slides. Please try again.");
+    } catch (err) {
+      console.error("Failed to generate slides", err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to generate slides. Please try again.",
+      );
       setIsLoading(false);
     }
   };
@@ -171,63 +201,52 @@ export default function Home() {
       const pixelRatio = isHighQuality ? 2 : 1;
       const imageQuality = isHighQuality ? 1.0 : 0.8;
 
-      const titleSlideElement = document.getElementById("slide-title");
-      const slideImages: { dataUrl: string; width: number; height: number }[] =
-        [];
-
       const captureSlide = async (element: HTMLElement) => {
         const options = {
           quality: imageQuality,
-          pixelRatio: pixelRatio,
+          pixelRatio,
           cacheBust: true,
-          backgroundColor: isDarkMode ? "#000000" : "#ffffff",
+          backgroundColor: isDarkMode ? "#09090b" : "#ffffff",
+          width: element.offsetWidth || 960,
+          height: element.offsetHeight || 540,
         };
 
-        let dataUrl;
-        // If High Quality PPT, use PNG (lossless). Otherwise use JPEG (smaller).
-        if (isHighQuality && exportFormat === "pptx") {
-          dataUrl = await toPng(element, options);
-        } else {
-          dataUrl = await toJpeg(element, options);
-        }
+        const dataUrl =
+          isHighQuality && exportFormat === "pptx"
+            ? await toPng(element, options)
+            : await toJpeg(element, options);
 
         return {
           dataUrl,
-          width: element.offsetWidth,
-          height: element.offsetHeight,
+          width: options.width,
+          height: options.height,
         };
       };
 
-      // Capture Title Slide
-      if (titleSlideElement) {
-        const result = await captureSlide(titleSlideElement);
-        slideImages.push(result);
-      }
+      const slideImages: { dataUrl: string; width: number; height: number }[] =
+        [];
 
-      // Capture Content Slides
+      const titleEl = document.getElementById("slide-title");
+      if (titleEl) slideImages.push(await captureSlide(titleEl));
+
       for (let i = 0; i < data.slides.length; i++) {
-        const slideElement = document.getElementById(`slide-${i}`);
-        if (slideElement) {
-          const result = await captureSlide(slideElement);
-          slideImages.push(result);
-        }
+        const el = document.getElementById(`slide-${i}`);
+        if (el) slideImages.push(await captureSlide(el));
       }
 
-      const fileName = `${data.title.replace(/[^a-z0-9]/gi, "_")}`;
+      if (slideImages.length === 0) {
+        throw new Error("No slides found to export");
+      }
+
+      const fileName = `${data.title.replace(/[^a-z0-9]+/gi, "_") || "presentation"}`;
 
       if (exportFormat === "pdf") {
-        if (slideImages.length === 0) return;
-
-        const firstSlide = slideImages[0];
+        const first = slideImages[0];
         const pdf = new jsPDF({
           orientation: "landscape",
           unit: "px",
-          format: [
-            firstSlide.width * pixelRatio,
-            firstSlide.height * pixelRatio,
-          ],
+          format: [first.width * pixelRatio, first.height * pixelRatio],
         });
-
         const pdfWidth = pdf.internal.pageSize.getWidth();
         const pdfHeight = pdf.internal.pageSize.getHeight();
 
@@ -244,218 +263,278 @@ export default function Home() {
             pdfHeight,
           );
         });
-
         pdf.save(`${fileName}.pdf`);
       } else {
-        // Export to PPTX
         const pres = new pptxgen();
         pres.layout = "LAYOUT_16x9";
-
         slideImages.forEach((slide) => {
           const s = pres.addSlide();
-          s.addImage({ data: slide.dataUrl, x: 0, y: 0, w: "100%", h: "100%" });
+          s.addImage({
+            data: slide.dataUrl,
+            x: 0,
+            y: 0,
+            w: "100%",
+            h: "100%",
+          });
         });
-
-        await pres.writeFile({
-          fileName: `${fileName}.pptx`,
-        });
+        await pres.writeFile({ fileName: `${fileName}.pptx` });
       }
     } catch (e) {
       console.error("Export failed", e);
+      setError("Export failed. Try again.");
     } finally {
       setIsExporting(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-white">
-      <div className="container mx-auto p-4 lg:py-8 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 lg:h-screen lg:overflow-hidden">
-        {/* Left Sidebar - Controls */}
-        <div className="lg:col-span-4 space-y-6 p-4 lg:p-6 border-b lg:border-b-0 lg:border-r h-fit lg:h-full flex flex-col lg:overflow-y-auto">
-          <div>
-            <h1 className="text-2xl font-bold mb-2">AI Slide Gen</h1>
-            <p className="text-gray-500 mb-8">
-              Generate minimalist presentations in seconds.
-            </p>
-          </div>
-
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 flex-1">
-            <div className="space-y-2">
-              <Label htmlFor="topic">Topic</Label>
-              <Textarea
-                id="topic"
-                placeholder="E.g. A pitch deck for a coffee shop..."
-                className="h-32 resize-none"
-                {...register("topic", { required: true })}
-              />
-              {errors.topic && (
-                <span className="text-red-500 text-sm">Topic is required</span>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label>Accent Color</Label>
-              <ColorPicker value={color} onChange={setColor} />
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Presentation Font</Label>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={toggleTheme}
-                  className="h-6 w-6"
-                  title={
-                    isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"
-                  }
+    <div
+      className={cn(
+        "min-h-screen transition-colors",
+        isDarkMode ? "bg-zinc-950 text-zinc-100" : "bg-zinc-50 text-zinc-900",
+      )}
+    >
+      <div className="mx-auto grid min-h-screen max-w-[1600px] grid-cols-1 lg:grid-cols-12 lg:gap-0">
+        {/* Sidebar */}
+        <aside
+          className={cn(
+            "flex flex-col border-b lg:col-span-4 lg:h-screen lg:overflow-y-auto lg:border-b-0 lg:border-r",
+            isDarkMode
+              ? "border-zinc-800 bg-zinc-950"
+              : "border-zinc-200 bg-white",
+          )}
+        >
+          <div className="flex flex-1 flex-col gap-6 p-5 sm:p-6 lg:p-7">
+            <header className="space-y-1">
+              <div className="mb-3 flex items-center gap-2">
+                <div
+                  className="flex h-9 w-9 items-center justify-center rounded-xl text-sm font-bold shadow-sm"
+                  style={{
+                    backgroundColor: effectiveColor,
+                    color: accentFg,
+                  }}
                 >
-                  {isDarkMode ? (
-                    <Sun className="h-4 w-4" />
-                  ) : (
-                    <Moon className="h-4 w-4" />
-                  )}
-                </Button>
+                  <Sparkles className="h-4 w-4" />
+                </div>
+                <div>
+                  <h1 className="text-lg font-semibold tracking-tight">
+                    AI Slide Gen
+                  </h1>
+                  <p className="text-xs text-muted-foreground">
+                    Minimal decks, fast
+                  </p>
+                </div>
               </div>
-              <div className="w-full">
+            </header>
+
+            <form
+              onSubmit={handleSubmit(onSubmit)}
+              className="flex flex-1 flex-col gap-5"
+            >
+              <div className="space-y-2">
+                <Label htmlFor="topic">Topic</Label>
+                <Textarea
+                  id="topic"
+                  placeholder="E.g. Pitch deck for a neighborhood coffee shop..."
+                  className={cn(
+                    "min-h-28 resize-none",
+                    isDarkMode && "bg-zinc-900 border-zinc-800",
+                  )}
+                  {...register("topic", { required: true, minLength: 3 })}
+                />
+                {errors.topic && (
+                  <span className="text-sm text-red-500">
+                    Enter a topic (min 3 chars)
+                  </span>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Accent color</Label>
+                <ColorPicker value={color} onChange={handleColorChange} />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Font</Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={toggleTheme}
+                    title={isDarkMode ? "Light mode" : "Dark mode"}
+                    aria-label="Toggle theme"
+                  >
+                    {isDarkMode ? (
+                      <Sun className="h-4 w-4" />
+                    ) : (
+                      <Moon className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
                 <FontPicker
                   currentFont={font}
                   onFontChange={handleFontChange}
                 />
               </div>
-            </div>
 
-            {error && (
-              <div className="p-3 bg-red-50 text-red-500 rounded-md text-sm border border-red-100">
-                {error}
+              {error && (
+                <div
+                  className={cn(
+                    "rounded-lg border px-3 py-2 text-sm",
+                    isDarkMode
+                      ? "border-red-900/60 bg-red-950/50 text-red-300"
+                      : "border-red-100 bg-red-50 text-red-600",
+                  )}
+                >
+                  {error}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleReset}
+                  title="Clear deck"
+                  className="px-3"
+                  disabled={isLoading || (!data && !error)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="submit"
+                  className="flex-1 font-medium"
+                  disabled={isLoading}
+                  style={{
+                    backgroundColor: effectiveColor,
+                    color: accentFg,
+                  }}
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Generating…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="mr-2 h-4 w-4" />
+                      Generate
+                    </>
+                  )}
+                </Button>
+              </div>
+            </form>
+
+            {data && (
+              <div
+                className={cn(
+                  "space-y-2 border-t pt-4",
+                  isDarkMode ? "border-zinc-800" : "border-zinc-200",
+                )}
+              >
+                <Button
+                  onClick={() => setIsPresenting(true)}
+                  className={cn(
+                    "w-full",
+                    isDarkMode
+                      ? "bg-zinc-100 text-zinc-900 hover:bg-white"
+                      : "bg-zinc-900 text-white hover:bg-zinc-800",
+                  )}
+                >
+                  <Play className="mr-2 h-4 w-4" />
+                  Present
+                </Button>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="justify-between px-3"
+                      >
+                        <span className="text-sm">
+                          {exportFormat === "pdf" ? "PDF" : "PPTX"}
+                        </span>
+                        <ChevronDown className="h-4 w-4 opacity-50" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuItem
+                        onClick={() => setExportFormat("pptx")}
+                      >
+                        PowerPoint (.pptx)
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setExportFormat("pdf")}>
+                        PDF (.pdf)
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="justify-between px-3"
+                      >
+                        <span className="text-sm">
+                          {exportQuality === "high" ? "High" : "Medium"}
+                        </span>
+                        <ChevronDown className="h-4 w-4 opacity-50" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() => setExportQuality("high")}
+                      >
+                        High quality
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => setExportQuality("medium")}
+                      >
+                        Medium (smaller)
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+
+                <Button
+                  onClick={handleExport}
+                  disabled={isExporting}
+                  className="w-full"
+                  style={{
+                    backgroundColor: effectiveColor,
+                    color: accentFg,
+                  }}
+                >
+                  {isExporting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Exporting…
+                    </>
+                  ) : (
+                    <>
+                      <Download className="mr-2 h-4 w-4" />
+                      Export
+                    </>
+                  )}
+                </Button>
               </div>
             )}
 
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleReset}
-                title="Clear Data"
-                className="px-3"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-              <Button
-                type="submit"
-                className="flex-1"
-                disabled={isLoading}
-                style={{ backgroundColor: color }}
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  "Generate Presentation"
-                )}
-              </Button>
-            </div>
-          </form>
-
-          {data && (
-            <div className="pt-4 border-t space-y-2">
-              <Button
-                onClick={() => setIsPresenting(true)}
-                variant="default"
-                className="w-full flex items-center justify-center gap-2 bg-gray-900 hover:bg-gray-800"
-              >
-                <Play className="h-4 w-4" />
-                Present
-              </Button>
-              <div className="grid grid-cols-2 gap-2">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className="text-gray-700 border-gray-300 flex items-center justify-between px-3"
-                    >
-                      <span className="text-sm truncate">
-                        {exportFormat === "pdf" ? "PDF" : "PPTX"}
-                      </span>
-                      <ChevronDown className="h-4 w-4 ml-2 opacity-50 shrink-0" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start">
-                    <DropdownMenuItem
-                      onClick={() => setExportFormat("pptx")}
-                      className={exportFormat === "pptx" ? "bg-gray-100" : ""}
-                    >
-                      PowerPoint (.pptx)
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => setExportFormat("pdf")}
-                      className={exportFormat === "pdf" ? "bg-gray-100" : ""}
-                    >
-                      PDF (.pdf)
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className="text-gray-700 border-gray-300 flex items-center justify-between px-3"
-                    >
-                      <span className="text-sm truncate">
-                        {exportQuality === "high" ? "High Q" : "Mid Q"}
-                      </span>
-                      <ChevronDown className="h-4 w-4 ml-2 opacity-50 shrink-0" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      onClick={() => setExportQuality("high")}
-                      className={exportQuality === "high" ? "bg-gray-100" : ""}
-                    >
-                      High (Larger size)
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => setExportQuality("medium")}
-                      className={
-                        exportQuality === "medium" ? "bg-gray-100" : ""
-                      }
-                    >
-                      Medium (Smaller size)
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-
-              <Button
-                onClick={handleExport}
-                disabled={isExporting}
-                variant="default"
-                className="w-full text-white"
-                style={{ backgroundColor: color }}
-              >
-                {isExporting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Exporting...
-                  </>
-                ) : (
-                  "Export Presentation"
-                )}
-              </Button>
-            </div>
-          )}
-
-          <div className="text-xs text-center text-gray-400 mt-auto">
-            Powered by Gemini Flash 2.5
+            <p className="mt-auto pt-4 text-center text-[11px] text-muted-foreground">
+              Gemini 2.5 Flash · ← → keys navigate preview
+            </p>
           </div>
-        </div>
+        </aside>
 
-        {/* Right Area - Preview */}
-        <div className="lg:col-span-8 p-4 lg:p-6 bg-gray-50/50 lg:h-full lg:overflow-y-auto rounded-xl">
+        {/* Preview stage */}
+        <main
+          className={cn(
+            "flex min-h-[70vh] flex-col p-4 sm:p-6 lg:col-span-8 lg:h-screen lg:overflow-hidden",
+            isDarkMode ? "bg-zinc-900/40" : "bg-zinc-100/80",
+          )}
+        >
           <SlidePreview
             data={data}
             isLoading={isLoading}
@@ -464,10 +543,9 @@ export default function Home() {
             font={font}
             isDarkMode={isDarkMode}
           />
-        </div>
+        </main>
       </div>
 
-      {/* Presentation Mode Overlay */}
       {isPresenting && data && (
         <PresentationMode
           data={data}

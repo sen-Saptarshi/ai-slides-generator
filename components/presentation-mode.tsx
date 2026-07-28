@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   X,
   ChevronLeft,
@@ -11,7 +11,6 @@ import {
   Shuffle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,11 +18,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { z } from "zod";
-import { presentationSchema } from "@/lib/schema/ppt-schema";
-import { motion, AnimatePresence } from "framer-motion";
-
-type Presentation = z.infer<typeof presentationSchema>;
+import { SlideCanvas, type Presentation } from "@/components/slide-canvas";
+import { ScaledStage } from "@/components/scaled-stage";
+import { motion, AnimatePresence, type Transition } from "framer-motion";
 
 interface PresentationModeProps {
   data: Presentation;
@@ -36,6 +33,53 @@ interface PresentationModeProps {
 type ViewMode = "standard" | "wide" | "full";
 type TransitionMode = "none" | "fade" | "slide" | "scale";
 
+const VIEW_WIDTH: Record<ViewMode, string> = {
+  // Distinct widths so scale actually changes on a typical display
+  standard: "w-[min(100%,42rem)]", // ~672px
+  wide: "w-[min(100%,64rem)]", // ~1024px
+  full: "w-[min(100%,calc(100vw-2rem))]", // nearly full viewport
+};
+
+const MOTION: Record<
+  TransitionMode,
+  {
+    initial: Record<string, number>;
+    animate: Record<string, number>;
+    exit: (dir: number) => Record<string, number>;
+    enter: (dir: number) => Record<string, number>;
+    transition: Transition;
+  }
+> = {
+  none: {
+    initial: { opacity: 1, x: 0, scale: 1 },
+    animate: { opacity: 1, x: 0, scale: 1 },
+    exit: () => ({ opacity: 1, x: 0, scale: 1 }),
+    enter: () => ({ opacity: 1, x: 0, scale: 1 }),
+    transition: { duration: 0 },
+  },
+  fade: {
+    initial: { opacity: 0, x: 0, scale: 1 },
+    animate: { opacity: 1, x: 0, scale: 1 },
+    exit: () => ({ opacity: 0, x: 0, scale: 1 }),
+    enter: () => ({ opacity: 0, x: 0, scale: 1 }),
+    transition: { duration: 0.55, ease: [0.4, 0, 0.2, 1] },
+  },
+  slide: {
+    initial: { opacity: 0, x: 0, scale: 1 },
+    animate: { opacity: 1, x: 0, scale: 1 },
+    exit: (dir) => ({ opacity: 0, x: dir > 0 ? -160 : 160, scale: 1 }),
+    enter: (dir) => ({ opacity: 0, x: dir > 0 ? 160 : -160, scale: 1 }),
+    transition: { duration: 0.4, ease: [0.32, 0.72, 0, 1] },
+  },
+  scale: {
+    initial: { opacity: 0, x: 0, scale: 0.86 },
+    animate: { opacity: 1, x: 0, scale: 1 },
+    exit: () => ({ opacity: 0, x: 0, scale: 1.08 }),
+    enter: () => ({ opacity: 0, x: 0, scale: 0.86 }),
+    transition: { duration: 0.45, ease: [0.32, 0.72, 0, 1] },
+  },
+};
+
 export function PresentationMode({
   data,
   color,
@@ -45,254 +89,151 @@ export function PresentationMode({
 }: PresentationModeProps) {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [viewMode, setViewMode] = useState<ViewMode>("wide");
-  const [transition, setTransition] = useState<TransitionMode>("slide");
-
-  // Total slides = 1 (title) + content slides
+  const [transitionMode, setTransitionMode] =
+    useState<TransitionMode>("fade");
+  const dirRef = useRef(1);
+  const [dir, setDir] = useState(1);
   const totalSlides = 1 + data.slides.length;
-
-  const widthClass = {
-    standard: "max-w-4xl",
-    wide: "max-w-7xl",
-    full: "max-w-[95vw]",
-  }[viewMode];
-
-  const variants = {
-    none: {
-      initial: { opacity: 1 },
-      animate: { opacity: 1 },
-      exit: { opacity: 1 },
-    },
-    fade: {
-      initial: { opacity: 0 },
-      animate: { opacity: 1 },
-      exit: { opacity: 0 },
-    },
-    slide: {
-      initial: { x: "100%", opacity: 0 },
-      animate: { x: 0, opacity: 1 },
-      exit: { x: "-100%", opacity: 0 },
-    },
-    scale: {
-      initial: { scale: 0.8, opacity: 0 },
-      animate: { scale: 1, opacity: 1 },
-      exit: { scale: 1.1, opacity: 0 },
-    },
-  };
+  const closingRef = useRef(false);
+  const onCloseRef = useRef(onClose);
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "ArrowRight" || e.key === "Space") {
-        setCurrentSlide((prev) => Math.min(prev + 1, totalSlides - 1));
-      } else if (e.key === "ArrowLeft") {
-        setCurrentSlide((prev) => Math.max(prev - 1, 0));
-      } else if (e.key === "Escape") {
-        onClose();
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  const moveTo = useCallback(
+    (next: number) => {
+      setCurrentSlide((prev) => {
+        const clamped = Math.min(Math.max(next, 0), totalSlides - 1);
+        if (clamped === prev) return prev;
+        const nextDir = clamped > prev ? 1 : -1;
+        dirRef.current = nextDir;
+        setDir(nextDir);
+        return clamped;
+      });
+    },
+    [totalSlides],
+  );
+
+  const step = useCallback(
+    (delta: number) => {
+      setCurrentSlide((prev) => {
+        const clamped = Math.min(Math.max(prev + delta, 0), totalSlides - 1);
+        if (clamped === prev) return prev;
+        dirRef.current = delta >= 0 ? 1 : -1;
+        setDir(delta >= 0 ? 1 : -1);
+        return clamped;
+      });
+    },
+    [totalSlides],
+  );
+
+  // Fullscreen: once on mount, exit once on unmount. Never re-toggle on slide change.
+  useEffect(() => {
+    const root = document.documentElement;
+    let active = true;
+
+    const enter = async () => {
+      try {
+        if (!document.fullscreenElement && root.requestFullscreen) {
+          await root.requestFullscreen();
+        }
+      } catch {
+        // User blocked or unsupported — still show overlay
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    // Request fullscreen on mount
-    document.documentElement.requestFullscreen().catch((e) => {
-      console.log("Fullscreen request denied or failed", e);
-    });
+    void enter();
+
+    const onFullscreenChange = () => {
+      // User pressed Esc / browser exit while we are still open → close presenter
+      if (active && !document.fullscreenElement && !closingRef.current) {
+        onCloseRef.current();
+      }
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
 
     return () => {
-      window.removeEventListener("keydown", handleKeyDown);
+      active = false;
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
       if (document.fullscreenElement) {
-        document.exitFullscreen().catch(console.error);
+        document.exitFullscreen().catch(() => {});
       }
     };
-  }, [totalSlides, onClose]);
+  }, []);
 
-  const slideContent = () => {
-    if (currentSlide === 0) {
-      // Title Slide
-      return (
-        <Card
-          className={cn(
-            "aspect-video w-full flex flex-col justify-center items-center text-center p-12 shadow-2xl border-t-8 transition-all duration-300",
-            widthClass,
-            isDarkMode ? "bg-black text-white" : "bg-white",
-          )}
-          style={{ borderTopColor: color }}
-        >
-          <h1 className="text-6xl font-bold mb-8" style={{ color }}>
-            {data.title}
-          </h1>
-          {data.subtitle && (
-            <div
-              className={cn(
-                "text-3xl font-light tracking-wide",
-                isDarkMode ? "text-gray-300" : "text-gray-500",
-              )}
-            >
-              {data.subtitle}
-            </div>
-          )}
-          <div
-            className="mt-16 h-2 w-32 rounded-full"
-            style={{ backgroundColor: color }}
-          />
-        </Card>
-      );
-    } else {
-      // Content Slides (index is currentSlide - 1)
-      const slide = data.slides[currentSlide - 1];
-      return (
-        <Card
-          className={cn(
-            "aspect-video w-full flex flex-col overflow-hidden shadow-2xl border-t-8 transition-all duration-300",
-            widthClass,
-            isDarkMode ? "bg-black text-white" : "bg-white",
-          )}
-          style={{ borderTopColor: color }}
-        >
-          <CardHeader
-            className={cn(
-              "pb-6 pt-10 px-16",
-              isDarkMode ? "bg-black" : "bg-white",
-            )}
-          >
-            <CardTitle className="text-4xl font-bold" style={{ color }}>
-              {slide.title}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex-1 px-16 pb-12 flex items-center justify-center overflow-hidden">
-            {slide.layout === "two_column" ? (
-              <div className="grid grid-cols-2 gap-16 w-full items-start">
-                <ul className="list-disc pl-5 space-y-6">
-                  {slide.content
-                    .slice(0, Math.ceil(slide.content.length / 2))
-                    .map((point: string, i: number) => (
-                      <li
-                        key={i}
-                        className={cn(
-                          "text-2xl leading-relaxed",
-                          isDarkMode ? "text-gray-300" : "text-gray-700",
-                        )}
-                      >
-                        {point}
-                      </li>
-                    ))}
-                </ul>
-                <ul className="list-disc pl-5 space-y-6">
-                  {slide.content
-                    .slice(Math.ceil(slide.content.length / 2))
-                    .map((point: string, i: number) => (
-                      <li
-                        key={i}
-                        className={cn(
-                          "text-2xl leading-relaxed",
-                          isDarkMode ? "text-gray-300" : "text-gray-700",
-                        )}
-                      >
-                        {point}
-                      </li>
-                    ))}
-                </ul>
-              </div>
-            ) : slide.layout === "image_and_text" ? (
-              <div className="grid grid-cols-2 gap-12 w-full items-center h-full">
-                <div className="relative w-full h-full min-h-0 rounded-xl overflow-hidden shadow-lg bg-black/5 flex items-center justify-center">
-                  {slide.imageUrl ? (
-                    <img
-                      src={slide.imageUrl}
-                      alt={slide.imagePrompt || "Slide image"}
-                      className="object-cover w-full h-full"
-                    />
-                  ) : (
-                    <div className="px-6 py-12 text-center text-muted-foreground bg-gray-100 dark:bg-gray-800 w-full h-full flex flex-col items-center justify-center animate-pulse">
-                      <div className="h-10 w-10 border-4 border-current border-t-transparent rounded-full animate-spin mb-6 opacity-30" />
-                      <p className="text-lg font-medium">
-                        Generating visual...
-                      </p>
-                      <p className="text-sm mt-2 opacity-50 max-w-[80%] mx-auto line-clamp-3">
-                        {slide.imagePrompt}
-                      </p>
-                    </div>
-                  )}
-                </div>
-                <div className="h-full flex items-center">
-                  <ul className="list-disc pl-5 space-y-6">
-                    {slide.content.map((point: string, i: number) => (
-                      <li
-                        key={i}
-                        className={cn(
-                          "text-2xl leading-relaxed",
-                          isDarkMode ? "text-gray-300" : "text-gray-700",
-                        )}
-                      >
-                        {point}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            ) : (
-              <ul className="list-disc pl-5 space-y-6 w-full">
-                {slide.content.map((point: string, i: number) => (
-                  <li
-                    key={i}
-                    className={cn(
-                      "text-3xl leading-relaxed",
-                      isDarkMode ? "text-gray-300" : "text-gray-700",
-                    )}
-                  >
-                    {point}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </CardContent>
-          <div
-            className={cn(
-              "h-6 w-full flex items-center justify-between px-8 text-sm",
-              isDarkMode
-                ? "bg-gray-900/50 text-gray-500"
-                : "bg-gray-50 text-gray-400",
-            )}
-          >
-            <span>
-              {currentSlide} / {data.slides.length}
-            </span>
-            <span>{data.title}</span>
-          </div>
-        </Card>
-      );
+  // Keyboard — functional updates, stable deps (no slide-change remount)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight" || e.key === " " || e.key === "PageDown") {
+        e.preventDefault();
+        step(1);
+      } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
+        e.preventDefault();
+        step(-1);
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        moveTo(0);
+      } else if (e.key === "End") {
+        e.preventDefault();
+        moveTo(totalSlides - 1);
+      } else if (e.key === "Escape") {
+        // Let browser exit fullscreen; fullscreenchange closes us.
+        // If not fullscreen, close directly.
+        e.preventDefault();
+        closingRef.current = true;
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => {});
+        }
+        onCloseRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [step, moveTo, totalSlides]);
+
+  const handleClose = () => {
+    closingRef.current = true;
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
     }
+    onClose();
   };
+
+  const isTitle = currentSlide === 0;
+  const contentIndex = currentSlide - 1;
+  const fx = MOTION[transitionMode];
 
   return (
     <div
-      className={cn(
-        "fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-8",
-        font,
-      )}
+      className={cn("fixed inset-0 z-50 flex flex-col bg-black", font)}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Presentation"
     >
-      <div className="absolute top-4 right-4 flex items-center gap-2 z-50">
+      <div className="absolute right-4 top-4 z-50 flex items-center gap-1 rounded-full bg-black/40 p-1 opacity-50 transition hover:opacity-100">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
-              className="text-white hover:bg-white/20"
+              className="text-white hover:bg-white/15"
+              aria-label="Transition style"
             >
-              <Shuffle className="h-6 w-6" />
+              <Shuffle className="h-5 w-5" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setTransition("none")}>
-              None
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setTransition("fade")}>
-              Fade
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setTransition("slide")}>
-              Slide
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setTransition("scale")}>
-              Scale
-            </DropdownMenuItem>
+            {(["none", "fade", "slide", "scale"] as const).map((t) => (
+              <DropdownMenuItem
+                key={t}
+                onClick={() => setTransitionMode(t)}
+                className={transitionMode === t ? "bg-accent" : ""}
+              >
+                {t[0].toUpperCase() + t.slice(1)}
+                {transitionMode === t ? " ✓" : ""}
+              </DropdownMenuItem>
+            ))}
           </DropdownMenuContent>
         </DropdownMenu>
 
@@ -301,20 +242,33 @@ export function PresentationMode({
             <Button
               variant="ghost"
               size="icon"
-              className="text-white hover:bg-white/20"
+              className="text-white hover:bg-white/15"
+              aria-label="Slide size"
             >
-              <Monitor className="h-6 w-6" />
+              <Monitor className="h-5 w-5" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setViewMode("standard")}>
-              <Minimize className="mr-2 h-4 w-4" /> Standard (4xl)
+            <DropdownMenuItem
+              onClick={() => setViewMode("standard")}
+              className={viewMode === "standard" ? "bg-accent" : ""}
+            >
+              <Minimize className="mr-2 h-4 w-4" /> Standard
+              {viewMode === "standard" ? " ✓" : ""}
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setViewMode("wide")}>
-              <Maximize className="mr-2 h-4 w-4" /> Wide (7xl)
+            <DropdownMenuItem
+              onClick={() => setViewMode("wide")}
+              className={viewMode === "wide" ? "bg-accent" : ""}
+            >
+              <Maximize className="mr-2 h-4 w-4" /> Wide
+              {viewMode === "wide" ? " ✓" : ""}
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setViewMode("full")}>
-              <Monitor className="mr-2 h-4 w-4" /> Full Width
+            <DropdownMenuItem
+              onClick={() => setViewMode("full")}
+              className={viewMode === "full" ? "bg-accent" : ""}
+            >
+              <Monitor className="mr-2 h-4 w-4" /> Full width
+              {viewMode === "full" ? " ✓" : ""}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -322,52 +276,86 @@ export function PresentationMode({
         <Button
           variant="ghost"
           size="icon"
-          className="text-white hover:bg-white/20"
-          onClick={onClose}
+          className="text-white hover:bg-white/15"
+          onClick={handleClose}
+          aria-label="Close"
         >
-          <X className="h-6 w-6" />
+          <X className="h-5 w-5" />
         </Button>
       </div>
 
-      <div className="flex-1 w-full flex items-center justify-center overflow-hidden">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={currentSlide}
-            variants={variants[transition]}
-            initial="initial"
-            animate="animate"
-            exit="exit"
-            transition={{ duration: 0.3 }}
-            className="w-full h-full flex items-center justify-center"
-          >
-            {slideContent()}
-          </motion.div>
-        </AnimatePresence>
+      {/* Stage — size modes change container width so ScaledStage actually rescales */}
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden px-4 py-16 sm:px-6">
+        <div
+          className={cn(
+            "relative transition-[width] duration-300 ease-out",
+            VIEW_WIDTH[viewMode],
+          )}
+        >
+          {/* Reserve 16:9 box so enter/exit don't collapse layout */}
+          <div className="relative w-full" style={{ paddingBottom: "56.25%" }}>
+            <div className="absolute inset-0">
+              <AnimatePresence mode="wait" custom={dir} initial={false}>
+                <motion.div
+                  key={currentSlide}
+                  custom={dir}
+                  initial={fx.enter(dir)}
+                  animate={fx.animate}
+                  exit={fx.exit(dir)}
+                  transition={fx.transition}
+                  className="absolute inset-0"
+                >
+                  <ScaledStage fitHeight className="h-full">
+                    {isTitle ? (
+                      <SlideCanvas
+                        kind="title"
+                        title={data.title}
+                        subtitle={data.subtitle}
+                        color={color}
+                        isDarkMode={isDarkMode}
+                      />
+                    ) : (
+                      <SlideCanvas
+                        kind="content"
+                        slide={data.slides[contentIndex]}
+                        index={contentIndex}
+                        total={data.slides.length}
+                        deckTitle={data.title}
+                        color={color}
+                        isDarkMode={isDarkMode}
+                      />
+                    )}
+                  </ScaledStage>
+                </motion.div>
+              </AnimatePresence>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div className="absolute bottom-8 flex items-center gap-4 text-white/50">
+      <div className="absolute bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-full bg-white/10 px-3 py-1.5 text-white/80 backdrop-blur-md">
         <Button
           variant="ghost"
-          size="icon"
-          onClick={() => setCurrentSlide((prev) => Math.max(prev - 1, 0))}
+          size="icon-sm"
+          onClick={() => step(-1)}
           disabled={currentSlide === 0}
-          className="hover:bg-white/20 disabled:opacity-30"
+          className="text-white hover:bg-white/20 disabled:opacity-30"
+          aria-label="Previous"
         >
-          <ChevronLeft className="h-8 w-8" />
+          <ChevronLeft className="h-5 w-5" />
         </Button>
-        <span className="text-sm font-medium">
-          Slide {currentSlide + 1} of {totalSlides}
+        <span className="min-w-20 text-center text-xs font-medium tabular-nums">
+          {currentSlide + 1} / {totalSlides}
         </span>
         <Button
           variant="ghost"
-          size="icon"
-          onClick={() =>
-            setCurrentSlide((prev) => Math.min(prev + 1, totalSlides - 1))
-          }
+          size="icon-sm"
+          onClick={() => step(1)}
           disabled={currentSlide === totalSlides - 1}
-          className="hover:bg-white/20 disabled:opacity-30"
+          className="text-white hover:bg-white/20 disabled:opacity-30"
+          aria-label="Next"
         >
-          <ChevronRight className="h-8 w-8" />
+          <ChevronRight className="h-5 w-5" />
         </Button>
       </div>
     </div>

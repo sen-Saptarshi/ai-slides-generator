@@ -5,7 +5,7 @@ import { presentationSchema } from "./schema/ppt-schema";
 export async function generateSlide(topic: string) {
   try {
     const { output } = await generateText({
-      model: google("gemini-2.5-flash"),
+      model: google("gemini-3.1-flash-lite-preview"),
       output: Output.object({
         schema: presentationSchema,
       }),
