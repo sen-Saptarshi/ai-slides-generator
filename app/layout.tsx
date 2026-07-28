@@ -42,8 +42,9 @@ const openSans = Open_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "AI Slide Gen",
-  description: "Generate minimalist presentations in seconds",
+  title: "Slideforge — AI presentations",
+  description:
+    "Describe a talk. Get a minimalist deck you can edit, present, and export.",
 };
 
 export default function RootLayout({

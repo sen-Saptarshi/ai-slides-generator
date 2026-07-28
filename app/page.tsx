@@ -1,554 +1,326 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
-import { ColorPicker } from "@/components/color-picker";
-import { SlidePreview } from "@/components/slide-preview";
-import { PresentationMode } from "@/components/presentation-mode";
-import { FontPicker } from "@/components/font-picker";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  ArrowRight,
+  Briefcase,
+  GraduationCap,
+  Loader2,
+  Moon,
+  Rocket,
+  Sparkles,
+  Sun,
+  Presentation,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
+import { ColorPicker } from "@/components/color-picker";
+import { generatePresentation } from "@/lib/generate-presentation";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { presentationSchema } from "@/lib/schema/ppt-schema";
-import { requestSlideImage } from "@/lib/slide-image";
-import { isLightColor, cn } from "@/lib/utils";
-import { z } from "zod";
-import {
-  Loader2,
-  Play,
-  Moon,
-  Sun,
-  Trash2,
-  ChevronDown,
-  Download,
-  Sparkles,
-} from "lucide-react";
+  hasSavedPresentation,
+  loadPrefs,
+  savePrefs,
+  savePresentation,
+} from "@/lib/presentation-store";
+import { cn, isLightColor } from "@/lib/utils";
 
-import { toPng, toJpeg } from "html-to-image";
-import pptxgen from "pptxgenjs";
-import jsPDF from "jspdf";
+const PRESETS = [
+  {
+    id: "pitch",
+    label: "Startup pitch",
+    icon: Rocket,
+    prompt:
+      "A 8-slide investor pitch deck for a B2B SaaS product that automates expense reports. Include problem, solution, market, product, traction, business model, team, and ask.",
+  },
+  {
+    id: "lecture",
+    label: "Lecture",
+    icon: GraduationCap,
+    prompt:
+      "A clear educational lecture deck on climate change basics for university students. Cover science, impacts, mitigation, and what individuals can do. 8-10 slides.",
+  },
+  {
+    id: "product",
+    label: "Product launch",
+    icon: Sparkles,
+    prompt:
+      "A product launch presentation for a new smart water bottle with hydration tracking. Cover vision, features, how it works, pricing, and go-to-market. 7-9 slides.",
+  },
+  {
+    id: "business",
+    label: "Business review",
+    icon: Briefcase,
+    prompt:
+      "A quarterly business review deck for a mid-size e-commerce brand. Include KPIs, wins, challenges, customer insights, and next-quarter priorities. 8 slides.",
+  },
+] as const;
 
-type PresentationData = z.infer<typeof presentationSchema>;
-
-interface FormData {
-  topic: string;
+function readClientPrefs() {
+  if (typeof window === "undefined") {
+    return { color: "#0f172a", isDarkMode: false, hasDraft: false };
+  }
+  const prefs = loadPrefs();
+  return {
+    color: prefs.color,
+    isDarkMode: prefs.isDarkMode,
+    hasDraft: hasSavedPresentation(),
+  };
 }
 
-export default function Home() {
-  const [data, setData] = useState<PresentationData | undefined>();
-  const [isLoading, setIsLoading] = useState(false);
+export default function HomePage() {
+  const router = useRouter();
+  const [topic, setTopic] = useState("");
+  const [boot] = useState(readClientPrefs);
+  const [color, setColor] = useState(boot.color);
+  const [isDarkMode, setIsDarkMode] = useState(boot.isDarkMode);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isExporting, setIsExporting] = useState(false);
-  const [isPresenting, setIsPresenting] = useState(false);
-  const [color, setColor] = useState("#0f172a");
-  const [font, setFont] = useState<string>("");
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const [exportFormat, setExportFormat] = useState<"pptx" | "pdf">("pptx");
-  const [exportQuality, setExportQuality] = useState<"high" | "medium">("high");
-  const [hydrated, setHydrated] = useState(false);
-
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors },
-  } = useForm<FormData>();
+  const [hasDraft] = useState(boot.hasDraft);
+  const [activePreset, setActivePreset] = useState<string | null>(null);
 
   useEffect(() => {
-    const saved = localStorage.getItem("presentation-data");
-    const savedFont = localStorage.getItem("presentation-font");
-    const savedTheme = localStorage.getItem("presentation-theme");
-    const savedColor = localStorage.getItem("presentation-color");
-
-    if (saved) {
-      try {
-        setData(JSON.parse(saved));
-      } catch {
-        localStorage.removeItem("presentation-data");
-      }
-    }
-    if (savedFont) setFont(savedFont);
-    if (savedTheme === "dark") setIsDarkMode(true);
-    if (savedColor) setColor(savedColor);
-    setHydrated(true);
-  }, []);
-
-  useEffect(() => {
-    if (!hydrated) return;
     document.documentElement.classList.toggle("dark", isDarkMode);
-  }, [isDarkMode, hydrated]);
+  }, [isDarkMode]);
 
-  const effectiveColor =
-    isDarkMode && (color === "#000000" || color === "#0f172a")
-      ? "#f8fafc"
-      : color;
+  const accentFg = isLightColor(color) ? "#0a0a0a" : "#ffffff";
 
-  const accentFg = isLightColor(effectiveColor) ? "#0a0a0a" : "#ffffff";
-
-  const toggleTheme = () => {
-    const next = !isDarkMode;
-    setIsDarkMode(next);
-    localStorage.setItem("presentation-theme", next ? "dark" : "light");
+  const applyTheme = (dark: boolean) => {
+    setIsDarkMode(dark);
+    savePrefs({ isDarkMode: dark });
+    document.documentElement.classList.toggle("dark", dark);
   };
 
-  const handleColorChange = (c: string) => {
+  const onColor = (c: string) => {
     setColor(c);
-    localStorage.setItem("presentation-color", c);
+    savePrefs({ color: c });
   };
 
-  const handleDataUpdate = (newData: PresentationData) => {
-    setData(newData);
-    localStorage.setItem("presentation-data", JSON.stringify(newData));
+  const pickPreset = (id: string, prompt: string) => {
+    setActivePreset(id);
+    setTopic(prompt);
   };
 
-  const handleFontChange = (newFont: string) => {
-    setFont(newFont);
-    localStorage.setItem("presentation-font", newFont);
-  };
-
-  const handleReset = () => {
-    setData(undefined);
-    setError(null);
-    localStorage.removeItem("presentation-data");
-    reset();
-  };
-
-  const onSubmit = async (formData: FormData) => {
-    setIsLoading(true);
-    setData(undefined);
-    setError(null);
-    try {
-      const response = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: formData.topic }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to generate presentation");
-      }
-
-      const result = await response.json();
-      if (result?.error) throw new Error(result.error);
-
-      const parsed = presentationSchema.safeParse(result.object ?? result);
-      if (!parsed.success) {
-        throw new Error("Invalid presentation data from model");
-      }
-      const newData = parsed.data;
-
-      setData(newData);
-      localStorage.setItem("presentation-data", JSON.stringify(newData));
-      setIsLoading(false);
-
-      newData.slides.forEach((slide, index) => {
-        if (
-          slide.layout !== "image_and_text" ||
-          !slide.imagePrompt ||
-          slide.imageUrl
-        ) {
-          return;
-        }
-        void (async () => {
-          try {
-            const imageUrl = await requestSlideImage(slide.imagePrompt!);
-            setData((prev) => {
-              if (!prev) return prev;
-              const slides = [...prev.slides];
-              if (slides[index]?.imageUrl) return prev;
-              slides[index] = { ...slides[index], imageUrl };
-              const updated = { ...prev, slides };
-              localStorage.setItem(
-                "presentation-data",
-                JSON.stringify(updated),
-              );
-              return updated;
-            });
-          } catch (err) {
-            console.error(`Image failed for slide ${index}`, err);
-          }
-        })();
-      });
-    } catch (err) {
-      console.error("Failed to generate slides", err);
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to generate slides. Please try again.",
-      );
-      setIsLoading(false);
+  const generate = async () => {
+    const trimmed = topic.trim();
+    if (trimmed.length < 3) {
+      setError("Describe your presentation (at least a few words).");
+      return;
     }
-  };
-
-  const handleExport = async () => {
-    if (!data) return;
-    setIsExporting(true);
-
+    setLoading(true);
+    setError(null);
     try {
-      const isHighQuality = exportQuality === "high";
-      const pixelRatio = isHighQuality ? 2 : 1;
-      const imageQuality = isHighQuality ? 1.0 : 0.8;
-
-      const captureSlide = async (element: HTMLElement) => {
-        const options = {
-          quality: imageQuality,
-          pixelRatio,
-          cacheBust: true,
-          backgroundColor: isDarkMode ? "#09090b" : "#ffffff",
-          width: element.offsetWidth || 960,
-          height: element.offsetHeight || 540,
-        };
-
-        const dataUrl =
-          isHighQuality && exportFormat === "pptx"
-            ? await toPng(element, options)
-            : await toJpeg(element, options);
-
-        return {
-          dataUrl,
-          width: options.width,
-          height: options.height,
-        };
-      };
-
-      const slideImages: { dataUrl: string; width: number; height: number }[] =
-        [];
-
-      const titleEl = document.getElementById("slide-title");
-      if (titleEl) slideImages.push(await captureSlide(titleEl));
-
-      for (let i = 0; i < data.slides.length; i++) {
-        const el = document.getElementById(`slide-${i}`);
-        if (el) slideImages.push(await captureSlide(el));
-      }
-
-      if (slideImages.length === 0) {
-        throw new Error("No slides found to export");
-      }
-
-      const fileName = `${data.title.replace(/[^a-z0-9]+/gi, "_") || "presentation"}`;
-
-      if (exportFormat === "pdf") {
-        const first = slideImages[0];
-        const pdf = new jsPDF({
-          orientation: "landscape",
-          unit: "px",
-          format: [first.width * pixelRatio, first.height * pixelRatio],
-        });
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = pdf.internal.pageSize.getHeight();
-
-        slideImages.forEach((slide, index) => {
-          if (index > 0) {
-            pdf.addPage([slide.width * pixelRatio, slide.height * pixelRatio]);
-          }
-          pdf.addImage(
-            slide.dataUrl,
-            slide.dataUrl.startsWith("data:image/png") ? "PNG" : "JPEG",
-            0,
-            0,
-            pdfWidth,
-            pdfHeight,
-          );
-        });
-        pdf.save(`${fileName}.pdf`);
-      } else {
-        const pres = new pptxgen();
-        pres.layout = "LAYOUT_16x9";
-        slideImages.forEach((slide) => {
-          const s = pres.addSlide();
-          s.addImage({
-            data: slide.dataUrl,
-            x: 0,
-            y: 0,
-            w: "100%",
-            h: "100%",
-          });
-        });
-        await pres.writeFile({ fileName: `${fileName}.pptx` });
-      }
+      savePrefs({ color, isDarkMode });
+      const data = await generatePresentation(trimmed);
+      savePresentation(data);
+      router.push("/edit");
     } catch (e) {
-      console.error("Export failed", e);
-      setError("Export failed. Try again.");
-    } finally {
-      setIsExporting(false);
+      console.error(e);
+      setError(
+        e instanceof Error ? e.message : "Generation failed. Try again.",
+      );
+      setLoading(false);
     }
   };
 
   return (
-    <div
-      className={cn(
-        "min-h-screen transition-colors",
-        isDarkMode ? "bg-zinc-950 text-zinc-100" : "bg-zinc-50 text-zinc-900",
-      )}
-    >
-      <div className="mx-auto grid min-h-screen max-w-[1600px] grid-cols-1 lg:grid-cols-12 lg:gap-0">
-        {/* Sidebar */}
-        <aside
-          className={cn(
-            "flex flex-col border-b lg:col-span-4 lg:h-screen lg:overflow-y-auto lg:border-b-0 lg:border-r",
-            isDarkMode
-              ? "border-zinc-800 bg-zinc-950"
-              : "border-zinc-200 bg-white",
-          )}
-        >
-          <div className="flex flex-1 flex-col gap-6 p-5 sm:p-6 lg:p-7">
-            <header className="space-y-1">
-              <div className="mb-3 flex items-center gap-2">
-                <div
-                  className="flex h-9 w-9 items-center justify-center rounded-xl text-sm font-bold shadow-sm"
-                  style={{
-                    backgroundColor: effectiveColor,
-                    color: accentFg,
-                  }}
-                >
-                  <Sparkles className="h-4 w-4" />
-                </div>
-                <div>
-                  <h1 className="text-lg font-semibold tracking-tight">
-                    AI Slide Gen
-                  </h1>
-                  <p className="text-xs text-muted-foreground">
-                    Minimal decks, fast
-                  </p>
-                </div>
-              </div>
-            </header>
+    <div className="relative min-h-screen overflow-hidden bg-[#0c0b0a] text-zinc-100">
+      <div
+        className="pointer-events-none absolute inset-0 opacity-90"
+        style={{
+          background:
+            "radial-gradient(ellipse 80% 50% at 50% -10%, rgba(212,168,83,0.18), transparent 55%), radial-gradient(ellipse 60% 40% at 100% 50%, rgba(80,100,140,0.12), transparent 50%), radial-gradient(ellipse 50% 30% at 0% 80%, rgba(180,90,60,0.08), transparent 45%)",
+        }}
+      />
+      <div
+        className="pointer-events-none absolute inset-0 opacity-[0.035]"
+        style={{
+          backgroundImage:
+            "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
+        }}
+      />
 
-            <form
-              onSubmit={handleSubmit(onSubmit)}
-              className="flex flex-1 flex-col gap-5"
-            >
-              <div className="space-y-2">
-                <Label htmlFor="topic">Topic</Label>
-                <Textarea
-                  id="topic"
-                  placeholder="E.g. Pitch deck for a neighborhood coffee shop..."
-                  className={cn(
-                    "min-h-28 resize-none",
-                    isDarkMode && "bg-zinc-900 border-zinc-800",
-                  )}
-                  {...register("topic", { required: true, minLength: 3 })}
-                />
-                {errors.topic && (
-                  <span className="text-sm text-red-500">
-                    Enter a topic (min 3 chars)
-                  </span>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label>Accent color</Label>
-                <ColorPicker value={color} onChange={handleColorChange} />
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>Font</Label>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={toggleTheme}
-                    title={isDarkMode ? "Light mode" : "Dark mode"}
-                    aria-label="Toggle theme"
-                  >
-                    {isDarkMode ? (
-                      <Sun className="h-4 w-4" />
-                    ) : (
-                      <Moon className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-                <FontPicker
-                  currentFont={font}
-                  onFontChange={handleFontChange}
-                />
-              </div>
-
-              {error && (
-                <div
-                  className={cn(
-                    "rounded-lg border px-3 py-2 text-sm",
-                    isDarkMode
-                      ? "border-red-900/60 bg-red-950/50 text-red-300"
-                      : "border-red-100 bg-red-50 text-red-600",
-                  )}
-                >
-                  {error}
-                </div>
-              )}
-
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleReset}
-                  title="Clear deck"
-                  className="px-3"
-                  disabled={isLoading || (!data && !error)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-                <Button
-                  type="submit"
-                  className="flex-1 font-medium"
-                  disabled={isLoading}
-                  style={{
-                    backgroundColor: effectiveColor,
-                    color: accentFg,
-                  }}
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Generating…
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="mr-2 h-4 w-4" />
-                      Generate
-                    </>
-                  )}
-                </Button>
-              </div>
-            </form>
-
-            {data && (
-              <div
-                className={cn(
-                  "space-y-2 border-t pt-4",
-                  isDarkMode ? "border-zinc-800" : "border-zinc-200",
-                )}
-              >
-                <Button
-                  onClick={() => setIsPresenting(true)}
-                  className={cn(
-                    "w-full",
-                    isDarkMode
-                      ? "bg-zinc-100 text-zinc-900 hover:bg-white"
-                      : "bg-zinc-900 text-white hover:bg-zinc-800",
-                  )}
-                >
-                  <Play className="mr-2 h-4 w-4" />
-                  Present
-                </Button>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className="justify-between px-3"
-                      >
-                        <span className="text-sm">
-                          {exportFormat === "pdf" ? "PDF" : "PPTX"}
-                        </span>
-                        <ChevronDown className="h-4 w-4 opacity-50" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      <DropdownMenuItem
-                        onClick={() => setExportFormat("pptx")}
-                      >
-                        PowerPoint (.pptx)
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setExportFormat("pdf")}>
-                        PDF (.pdf)
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className="justify-between px-3"
-                      >
-                        <span className="text-sm">
-                          {exportQuality === "high" ? "High" : "Medium"}
-                        </span>
-                        <ChevronDown className="h-4 w-4 opacity-50" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onClick={() => setExportQuality("high")}
-                      >
-                        High quality
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => setExportQuality("medium")}
-                      >
-                        Medium (smaller)
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-
-                <Button
-                  onClick={handleExport}
-                  disabled={isExporting}
-                  className="w-full"
-                  style={{
-                    backgroundColor: effectiveColor,
-                    color: accentFg,
-                  }}
-                >
-                  {isExporting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Exporting…
-                    </>
-                  ) : (
-                    <>
-                      <Download className="mr-2 h-4 w-4" />
-                      Export
-                    </>
-                  )}
-                </Button>
-              </div>
-            )}
-
-            <p className="mt-auto pt-4 text-center text-[11px] text-muted-foreground">
-              Gemini 2.5 Flash · ← → keys navigate preview
-            </p>
+      <header className="relative z-10 mx-auto flex max-w-5xl items-center justify-between px-6 py-6">
+        <div className="flex items-center gap-2.5">
+          <div
+            className="flex h-9 w-9 items-center justify-center rounded-lg"
+            style={{ backgroundColor: color, color: accentFg }}
+          >
+            <Presentation className="h-4 w-4" />
           </div>
-        </aside>
+          <span className="font-[family-name:var(--font-playfair)] text-lg tracking-tight">
+            Slideforge
+          </span>
+        </div>
+        {hasDraft ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-zinc-300 hover:bg-white/10 hover:text-white"
+            onClick={() => router.push("/edit")}
+          >
+            Continue editing
+            <ArrowRight className="ml-1 h-3.5 w-3.5" />
+          </Button>
+        ) : null}
+      </header>
 
-        {/* Preview stage */}
-        <main
-          className={cn(
-            "flex min-h-[70vh] flex-col p-4 sm:p-6 lg:col-span-8 lg:h-screen lg:overflow-hidden",
-            isDarkMode ? "bg-zinc-900/40" : "bg-zinc-100/80",
-          )}
-        >
-          <SlidePreview
-            data={data}
-            isLoading={isLoading}
-            color={effectiveColor}
-            onUpdate={handleDataUpdate}
-            font={font}
-            isDarkMode={isDarkMode}
+      <main className="relative z-10 mx-auto flex max-w-3xl flex-col px-6 pb-24 pt-10 sm:pt-16">
+        <p className="mb-4 text-xs font-medium uppercase tracking-[0.2em] text-[#d4a853]">
+          AI presentation studio
+        </p>
+        <h1 className="font-[family-name:var(--font-playfair)] text-4xl leading-[1.1] tracking-tight text-zinc-50 sm:text-5xl md:text-[3.25rem]">
+          Decks that look designed
+          <br className="hidden sm:block" />
+          <span className="text-zinc-400"> not dumped from a chat.</span>
+        </h1>
+        <p className="mt-5 max-w-xl text-base leading-relaxed text-zinc-400 sm:text-lg">
+          Describe the talk. Get a minimalist slide deck you can edit, restyle,
+          present, and export.
+        </p>
+
+        <div className="mt-10 rounded-2xl border border-white/10 bg-zinc-900/70 p-4 shadow-2xl shadow-black/40 backdrop-blur-md sm:p-5">
+          <Textarea
+            value={topic}
+            onChange={(e) => {
+              setTopic(e.target.value);
+              setActivePreset(null);
+            }}
+            placeholder="E.g. Pitch deck for a neighborhood specialty coffee shop expanding to a second location..."
+            className="min-h-[140px] resize-none border-0 bg-transparent px-1 py-1 text-base text-zinc-100 shadow-none placeholder:text-zinc-500 focus-visible:ring-0"
+            disabled={loading}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                void generate();
+              }
+            }}
           />
-        </main>
-      </div>
 
-      {isPresenting && data && (
-        <PresentationMode
-          data={data}
-          color={effectiveColor}
-          font={font}
-          isDarkMode={isDarkMode}
-          onClose={() => setIsPresenting(false)}
-        />
-      )}
+          <div className="mt-3 flex flex-wrap gap-2 border-t border-white/10 pt-4">
+            {PRESETS.map((p) => {
+              const Icon = p.icon;
+              const on = activePreset === p.id;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  disabled={loading}
+                  onClick={() => pickPreset(p.id, p.prompt)}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition",
+                    on
+                      ? "border-[#d4a853]/50 bg-[#d4a853]/15 text-[#e8c97a]"
+                      : "border-white/10 bg-white/5 text-zinc-400 hover:border-white/20 hover:text-zinc-200",
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {p.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 flex flex-col gap-4 border-t border-white/10 pt-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex flex-1 flex-wrap items-end gap-4">
+              <div className="min-w-[140px] flex-1 space-y-1.5 sm:max-w-[200px]">
+                <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                  Accent
+                </label>
+                <ColorPicker value={color} onChange={onColor} />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+                  Slide theme
+                </label>
+                <div className="flex rounded-lg border border-white/10 p-0.5">
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => applyTheme(false)}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs transition",
+                      !isDarkMode
+                        ? "bg-white text-zinc-900"
+                        : "text-zinc-400 hover:text-zinc-200",
+                    )}
+                  >
+                    <Sun className="h-3.5 w-3.5" /> Light
+                  </button>
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => applyTheme(true)}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs transition",
+                      isDarkMode
+                        ? "bg-zinc-100 text-zinc-900"
+                        : "text-zinc-400 hover:text-zinc-200",
+                    )}
+                  >
+                    <Moon className="h-3.5 w-3.5" /> Dark
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <Button
+              type="button"
+              disabled={loading}
+              onClick={() => void generate()}
+              className="h-11 shrink-0 px-6 font-medium"
+              style={{ backgroundColor: color, color: accentFg }}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Crafting deck...
+                </>
+              ) : (
+                <>
+                  Generate
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </>
+              )}
+            </Button>
+          </div>
+
+          {error ? (
+            <p className="mt-3 text-sm text-red-400" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <p className="mt-3 text-[11px] text-zinc-600">
+            Cmd/Ctrl + Enter to generate
+          </p>
+        </div>
+
+        <ul className="mt-14 grid gap-6 sm:grid-cols-3">
+          {[
+            {
+              t: "Structure first",
+              d: "Titles, layouts, and bullets before polish.",
+            },
+            {
+              t: "Edit in place",
+              d: "Click any text. Regen images from prompts.",
+            },
+            {
+              t: "Present and export",
+              d: "Fullscreen show, PDF or PPTX out.",
+            },
+          ].map((f) => (
+            <li key={f.t} className="border-t border-white/10 pt-4">
+              <h3 className="font-[family-name:var(--font-playfair)] text-lg text-zinc-200">
+                {f.t}
+              </h3>
+              <p className="mt-1.5 text-sm leading-relaxed text-zinc-500">
+                {f.d}
+              </p>
+            </li>
+          ))}
+        </ul>
+      </main>
     </div>
   );
 }
